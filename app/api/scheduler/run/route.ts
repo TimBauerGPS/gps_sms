@@ -197,6 +197,7 @@ export async function POST() {
             job_id: job.id,
             plan_id: plan.id,
             to_phone: phone,
+            from_phone: company.twilio_phone_number ?? '',
             body: resolvedMessage,
             direction: 'outbound',
             sent_at: new Date().toISOString(),
