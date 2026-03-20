@@ -24,7 +24,7 @@ export async function proxy(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
 
   const { pathname } = request.nextUrl
-  const isPublic = pathname.startsWith('/login') || pathname.startsWith('/auth') || pathname.startsWith('/onboarding') || pathname === '/api/signup-request' || pathname === '/api/twilio-inbound'
+  const isPublic = pathname.startsWith('/login') || pathname.startsWith('/auth') || pathname.startsWith('/onboarding') || pathname === '/api/signup-request' || pathname === '/api/twilio-inbound' || pathname.startsWith('/api/check-twilio')
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone()

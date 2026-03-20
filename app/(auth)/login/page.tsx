@@ -10,6 +10,27 @@ export default function LoginPage() {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('login')
 
+  // ── Forgot password state ─────────────────────────────────────────────────
+  const [showForgot, setShowForgot] = useState(false)
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [forgotError, setForgotError] = useState<string | null>(null)
+  const [forgotLoading, setForgotLoading] = useState(false)
+  const [forgotSent, setForgotSent] = useState(false)
+
+  async function handleForgot(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    setForgotError(null)
+    setForgotLoading(true)
+    const supabase = createClient()
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin
+    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
+      redirectTo: `${appUrl}/auth/callback?next=/auth/set-password`,
+    })
+    if (error) { setForgotError(error.message); setForgotLoading(false); return }
+    setForgotSent(true)
+    setForgotLoading(false)
+  }
+
   // ── Login state ───────────────────────────────────────────────────────────
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -83,7 +104,40 @@ export default function LoginPage() {
 
         {/* Card */}
         <div className="rounded-xl border border-slate-700 bg-slate-800 p-8 shadow-xl">
-          {tab === 'login' ? (
+          {tab === 'login' && showForgot ? (
+            forgotSent ? (
+              <div className="text-center space-y-3 py-4">
+                <div className="text-3xl">✉️</div>
+                <p className="text-sm font-medium text-white">Check your email</p>
+                <p className="text-xs text-slate-400">We sent a password reset link to <strong>{forgotEmail}</strong>.</p>
+                <button onClick={() => { setShowForgot(false); setForgotSent(false) }} className="mt-2 text-xs text-blue-400 hover:text-blue-300 underline">Back to sign in</button>
+              </div>
+            ) : (
+              <form onSubmit={handleForgot} noValidate className="space-y-5">
+                <p className="text-sm text-slate-300">Enter your email and we&apos;ll send a reset link.</p>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1.5">Email address</label>
+                  <input
+                    type="email"
+                    required
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+                    placeholder="you@example.com"
+                  />
+                </div>
+                {forgotError && (
+                  <div className="rounded-lg border border-red-700/50 bg-red-900/30 px-3.5 py-2.5">
+                    <p className="text-sm text-red-400">{forgotError}</p>
+                  </div>
+                )}
+                <button type="submit" disabled={forgotLoading} className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                  {forgotLoading ? 'Sending…' : 'Send reset link'}
+                </button>
+                <button type="button" onClick={() => setShowForgot(false)} className="w-full text-xs text-slate-400 hover:text-white transition-colors">Cancel</button>
+              </form>
+            )
+          ) : tab === 'login' ? (
             <form onSubmit={handleLogin} noValidate className="space-y-5">
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-1.5">
@@ -127,6 +181,15 @@ export default function LoginPage() {
               >
                 {loginLoading ? 'Signing in…' : 'Sign in'}
               </button>
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => { setShowForgot(true); setForgotEmail(email) }}
+                  className="text-xs text-slate-400 hover:text-blue-400 transition-colors"
+                >
+                  Forgot password?
+                </button>
+              </div>
             </form>
           ) : reqSuccess ? (
             <div className="text-center space-y-3 py-4">

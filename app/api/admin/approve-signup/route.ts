@@ -89,9 +89,13 @@ export async function POST(req: NextRequest) {
     )
   } else {
     // New user — send invite email so they can set a password
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
     const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(
       request.email,
-      { data: { company_id: resolvedCompanyId } }
+      {
+        data: { company_id: resolvedCompanyId },
+        redirectTo: `${appUrl}/auth/callback?next=/auth/set-password`,
+      }
     )
     if (inviteErr || !invited?.user) {
       console.error('[approve-signup] invite error:', inviteErr)
