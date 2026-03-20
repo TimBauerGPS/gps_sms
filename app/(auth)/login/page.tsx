@@ -59,7 +59,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Heading */}
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold text-white tracking-tight">Allied SMS</h1>
+          <h1 className="text-2xl font-bold text-white tracking-tight">Guardian SMS</h1>
           <p className="mt-1 text-sm text-slate-400">
             {tab === 'login' ? 'Sign in to your account' : 'Request access'}
           </p>
