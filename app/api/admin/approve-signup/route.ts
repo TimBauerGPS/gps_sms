@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
+async function sendEmail(to: string, subject: string, html: string) {
+  const key = process.env.RESEND_API_KEY
+  if (!key) return
+  const from = process.env.RESEND_FROM_EMAIL ?? 'Allied SMS <onboarding@resend.dev>'
+  await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from, to: [to], subject, html }),
+  })
+}
+
 export async function POST(req: NextRequest) {
   // Auth — must be admin
   const supabase = await createClient()
@@ -66,8 +77,16 @@ export async function POST(req: NextRequest) {
   )
 
   if (existingUser) {
-    // User already has a Supabase auth account — skip invite, just link them
+    // User already has a Supabase auth account — skip invite, send approval email
     authUserId = existingUser.id
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+    await sendEmail(
+      request.email,
+      'Your Allied SMS access has been approved',
+      `<p>Hi ${request.name},</p>
+       <p>Your access to Allied SMS has been approved. Since you already have an account, you can log in immediately with your existing password:</p>
+       <p><a href="${appUrl}/login">Log in to Allied SMS →</a></p>`
+    )
   } else {
     // New user — send invite email so they can set a password
     const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(
