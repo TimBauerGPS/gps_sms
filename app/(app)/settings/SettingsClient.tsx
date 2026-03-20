@@ -407,6 +407,7 @@ export default function SettingsClient({ company }: Props) {
             <div className="space-y-2 text-sm">
               {(['credentials', 'phoneNumber', 'webhook'] as const).map((key) => {
                 const item = checkResult[key]
+                const webhookItem = key === 'webhook' ? checkResult.webhook : null
                 return (
                   <div key={key} className="flex items-start gap-2">
                     <span className={item.ok ? 'text-green-500' : 'text-red-500'}>
@@ -416,11 +417,11 @@ export default function SettingsClient({ company }: Props) {
                       <span className={item.ok ? 'text-green-700' : 'text-red-700'}>
                         {item.message}
                       </span>
-                      {key === 'webhook' && !item.ok && item.current && (
+                      {webhookItem && !webhookItem.ok && webhookItem.current && (
                         <div className="text-xs text-slate-500 mt-0.5">
-                          Currently set to: <code className="font-mono bg-slate-100 px-1 rounded">{item.current}</code>
+                          Currently set to: <code className="font-mono bg-slate-100 px-1 rounded">{webhookItem.current}</code>
                           <br />
-                          Should be: <code className="font-mono bg-slate-100 px-1 rounded">{item.expected}</code>
+                          Should be: <code className="font-mono bg-slate-100 px-1 rounded">{webhookItem.expected}</code>
                         </div>
                       )}
                     </div>
