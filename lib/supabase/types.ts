@@ -363,6 +363,39 @@ export interface Database {
           }
         ]
       }
+      signup_requests: {
+        Row: {
+          id: string
+          email: string
+          name: string
+          requested_company_name: string
+          status: 'pending' | 'approved' | 'rejected'
+          company_id: string | null
+          notes: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          email: string
+          name: string
+          requested_company_name: string
+          status?: 'pending' | 'approved' | 'rejected'
+          company_id?: string | null
+          notes?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          email?: string
+          name?: string
+          requested_company_name?: string
+          status?: 'pending' | 'approved' | 'rejected'
+          company_id?: string | null
+          notes?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
       send_queue: {
         Row: {
           id: string
@@ -454,3 +487,4 @@ export type Conversation = Database['public']['Tables']['conversations']['Row']
 export type DoNotText = Database['public']['Tables']['do_not_text']['Row']
 export type PulseCheckRun = Database['public']['Tables']['pulse_check_runs']['Row']
 export type SendQueue = Database['public']['Tables']['send_queue']['Row']
+export type SignupRequest = Database['public']['Tables']['signup_requests']['Row']
