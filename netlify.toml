@@ -12,3 +12,10 @@
   for = "/api/twilio-inbound"
   [headers.values]
     X-Frame-Options = "DENY"
+
+# Redirect old Netlify function path → Next.js API route for backwards compat
+[[redirects]]
+  from = "/.netlify/functions/twilio-inbound"
+  to = "/api/twilio-inbound"
+  status = 200
+  force = true
