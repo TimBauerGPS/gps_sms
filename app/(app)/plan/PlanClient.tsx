@@ -84,6 +84,7 @@ export default function PlanClient({ initialPlans, companyId }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
   const messageTemplateRef = useRef<HTMLTextAreaElement>(null)
 
   function insertPlaceholder(text: string) {
@@ -491,9 +492,20 @@ export default function PlanClient({ initialPlans, companyId }: Props) {
                     )}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600 max-w-sm">
-                    <span title={plan.message_template}>
-                      {truncate(plan.message_template, 60)}
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setExpandedId(expandedId === plan.id ? null : plan.id)}
+                      className="text-left w-full hover:text-gray-900 focus:outline-none"
+                    >
+                      {expandedId === plan.id ? (
+                        <span className="whitespace-pre-wrap">{plan.message_template}</span>
+                      ) : (
+                        <span>{truncate(plan.message_template, 60)}</span>
+                      )}
+                      <span className="ml-1 text-xs text-blue-500">
+                        {expandedId === plan.id ? '▲ less' : '▼ more'}
+                      </span>
+                    </button>
                   </td>
                   <td className="px-4 py-3 text-center">
                     <button
