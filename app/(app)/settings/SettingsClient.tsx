@@ -169,6 +169,35 @@ export default function SettingsClient({ company }: Props) {
   const [showToken, setShowToken] = useState(false)
   const twilioToast = useToast()
 
+  type CheckResult = {
+    credentials: { ok: boolean; message: string }
+    phoneNumber: { ok: boolean; message: string }
+    webhook: { ok: boolean; message: string; current: string; expected: string }
+  }
+  const [checkResult, setCheckResult] = useState<CheckResult | null>(null)
+  const [checking, setChecking] = useState(false)
+  const [showWebhookInstructions, setShowWebhookInstructions] = useState(false)
+
+  async function checkTwilio() {
+    setChecking(true)
+    setCheckResult(null)
+    try {
+      const res = await fetch('/api/settings/check-twilio', { method: 'POST' })
+      const data = await res.json()
+      if (data.error) {
+        setCheckResult(null)
+        alert(data.error)
+      } else {
+        setCheckResult(data)
+        if (data.webhook && !data.webhook.ok) setShowWebhookInstructions(true)
+      }
+    } catch {
+      alert('Network error. Please try again.')
+    } finally {
+      setChecking(false)
+    }
+  }
+
   async function saveTwilio() {
     twilioToast.show('saving')
     const { error } = await supabase
@@ -363,28 +392,102 @@ export default function SettingsClient({ company }: Props) {
         <HelperText>
           Credentials are stored securely. All SMS calls are server-side only.
         </HelperText>
+
+        {/* Check Configuration */}
+        <div className="border-t border-slate-100 pt-4 space-y-3">
+          <button
+            onClick={checkTwilio}
+            disabled={checking}
+            className="px-4 py-2 bg-slate-800 text-white text-sm font-medium rounded-lg hover:bg-slate-900 disabled:opacity-50 transition-colors"
+          >
+            {checking ? 'Checking…' : 'Check Configuration'}
+          </button>
+
+          {checkResult && (
+            <div className="space-y-2 text-sm">
+              {(['credentials', 'phoneNumber', 'webhook'] as const).map((key) => {
+                const item = checkResult[key]
+                return (
+                  <div key={key} className="flex items-start gap-2">
+                    <span className={item.ok ? 'text-green-500' : 'text-red-500'}>
+                      {item.ok ? '✓' : '✗'}
+                    </span>
+                    <div>
+                      <span className={item.ok ? 'text-green-700' : 'text-red-700'}>
+                        {item.message}
+                      </span>
+                      {key === 'webhook' && !item.ok && item.current && (
+                        <div className="text-xs text-slate-500 mt-0.5">
+                          Currently set to: <code className="font-mono bg-slate-100 px-1 rounded">{item.current}</code>
+                          <br />
+                          Should be: <code className="font-mono bg-slate-100 px-1 rounded">{item.expected}</code>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Webhook setup instructions */}
         <div className="border-t border-slate-100 pt-4 space-y-2">
-          <p className="text-xs font-medium text-slate-600">How to find your Twilio credentials:</p>
-          <ol className="text-xs text-slate-500 space-y-1 list-decimal list-inside leading-relaxed">
-            <li>
-              Go to{' '}
-              <a
-                href="https://console.twilio.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-600 hover:underline"
-              >
-                console.twilio.com
-              </a>{' '}
-              and sign in
-            </li>
-            <li>Your <strong className="text-slate-600">Account SID</strong> and <strong className="text-slate-600">Auth Token</strong> are on the dashboard homepage</li>
-            <li>
-              For the <strong className="text-slate-600">Phone Number</strong>, go to{' '}
-              Phone Numbers → Manage → Active Numbers — copy the number in E.164 format (e.g. +17325875238)
-            </li>
-            <li>Make sure your Twilio number has SMS capability enabled</li>
-          </ol>
+          <button
+            type="button"
+            onClick={() => setShowWebhookInstructions((v) => !v)}
+            className="text-xs font-medium text-slate-600 hover:text-slate-900 flex items-center gap-1"
+          >
+            <span>{showWebhookInstructions ? '▼' : '▶'}</span>
+            How to configure your Twilio webhook
+          </button>
+
+          {showWebhookInstructions && (
+            <div className="space-y-3 pl-3">
+              <ol className="text-xs text-slate-500 space-y-1.5 list-decimal list-inside leading-relaxed">
+                <li>
+                  Go to{' '}
+                  <a href="https://console.twilio.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                    console.twilio.com
+                  </a>{' '}
+                  and sign in
+                </li>
+                <li>Navigate to <strong className="text-slate-600">Phone Numbers → Manage → Active Numbers</strong></li>
+                <li>Click on your SMS number</li>
+                <li>Scroll to the <strong className="text-slate-600">Messaging</strong> section</li>
+                <li>Under <strong className="text-slate-600">&ldquo;A message comes in&rdquo;</strong>, set the dropdown to <strong className="text-slate-600">Webhook</strong></li>
+                <li>
+                  Paste this URL into the field:{' '}
+                  <code className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-700 select-all">
+                    {process.env.NEXT_PUBLIC_APP_URL ?? 'https://your-site.netlify.app'}/api/twilio-inbound
+                  </code>
+                </li>
+                <li>Set the method to <strong className="text-slate-600">HTTP POST</strong></li>
+                <li>Click <strong className="text-slate-600">Save configuration</strong></li>
+              </ol>
+              <p className="text-xs text-slate-400">
+                After saving, click &ldquo;Check Configuration&rdquo; above to verify.
+              </p>
+            </div>
+          )}
+
+          <div className="pt-1 space-y-1">
+            <p className="text-xs font-medium text-slate-600">How to find your Twilio credentials:</p>
+            <ol className="text-xs text-slate-500 space-y-1 list-decimal list-inside leading-relaxed">
+              <li>
+                Go to{' '}
+                <a href="https://console.twilio.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                  console.twilio.com
+                </a>{' '}
+                and sign in
+              </li>
+              <li>Your <strong className="text-slate-600">Account SID</strong> and <strong className="text-slate-600">Auth Token</strong> are on the dashboard homepage</li>
+              <li>
+                For the <strong className="text-slate-600">Phone Number</strong>, go to Phone Numbers → Manage → Active Numbers — copy in E.164 format (e.g. +17325875238)
+              </li>
+              <li>Make sure your Twilio number has SMS capability enabled</li>
+            </ol>
+          </div>
         </div>
       </Section>
 
