@@ -178,7 +178,7 @@ export async function POST() {
     job_id: string
     plan_id: string
     resolved_message: string
-    status: string
+    status: 'pending' | 'sent' | 'skipped'
     queued_at: string
   }> = []
   const toAutoSend: Array<{ phone: string; resolvedMessage: string; jobId: string; planId: string }> = []
