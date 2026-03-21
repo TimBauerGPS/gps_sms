@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
   if (existingUser) {
     // User already has a Supabase auth account — skip invite, send approval email
     authUserId = existingUser.id
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://albisms.netlify.app'
     await sendEmail(
       request.email,
       'Your Allied SMS access has been approved',
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
     )
   } else {
     // New user — send invite email so they can set a password
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://albisms.netlify.app'
     const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(
       request.email,
       {
