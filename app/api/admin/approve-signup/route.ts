@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
       type: 'invite',
       email: request.email,
       options: {
-        redirectTo: `${appUrl}/auth/callback`,
+        redirectTo: `${appUrl}/auth/callback?next=/auth/set-password`,
         data: { company_id: resolvedCompanyId },
       },
     })
