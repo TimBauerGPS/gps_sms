@@ -142,16 +142,21 @@ export default function SendQueueClient({ initialRows, companyId }: Props) {
     setActionError(null)
     try {
       const res = await fetch('/api/scheduler/run', { method: 'POST' })
+      if (res.status === 504 || res.status === 502) {
+        // Gateway timeout — server is still processing. Jobs may have been queued.
+        setActionError('Scheduler is still running — this can take a moment for large job lists. Refresh the page in a few seconds to see any newly queued items.')
+        return
+      }
       const json = await res.json()
       if (!res.ok) {
         setActionError(json.error ?? 'Scheduler run failed.')
       } else {
         setRunResult(json)
-        // Reload page to pick up newly queued items
         window.location.reload()
       }
     } catch {
-      setActionError('Network error while running scheduler.')
+      // Network error may also mean a timeout — reload to check results
+      setActionError('Scheduler took longer than expected. Refresh the page in a few seconds to see any newly queued items.')
     } finally {
       setRunning(false)
     }
