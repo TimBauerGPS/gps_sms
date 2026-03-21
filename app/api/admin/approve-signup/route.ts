@@ -88,20 +88,30 @@ export async function POST(req: NextRequest) {
        <p><a href="${appUrl}/login">Log in to Allied SMS →</a></p>`
     )
   } else {
-    // New user — send invite email so they can set a password
+    // New user — generate invite link manually so it points to this app, not the Supabase Site URL
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://albisms.netlify.app'
-    const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(
-      request.email,
-      {
+    const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
+      type: 'invite',
+      email: request.email,
+      options: {
+        redirectTo: `${appUrl}/auth/callback`,
         data: { company_id: resolvedCompanyId },
-        redirectTo: `${appUrl}/auth/callback?next=/auth/set-password`,
-      }
-    )
-    if (inviteErr || !invited?.user) {
-      console.error('[approve-signup] invite error:', inviteErr)
-      return NextResponse.json({ error: inviteErr?.message ?? 'Failed to invite user' }, { status: 500 })
+      },
+    })
+    if (linkErr || !linkData) {
+      console.error('[approve-signup] generateLink error:', linkErr)
+      return NextResponse.json({ error: linkErr?.message ?? 'Failed to generate invite link' }, { status: 500 })
     }
-    authUserId = invited.user.id
+    authUserId = linkData.user.id
+    const inviteUrl = linkData.properties.action_link
+    await sendEmail(
+      request.email,
+      'You\'ve been approved for Guardian SMS',
+      `<p>Hi ${request.name},</p>
+       <p>Your access request has been approved. Click the link below to set your password and log in:</p>
+       <p><a href="${inviteUrl}" style="background:#3b82f6;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block;">Set your password →</a></p>
+       <p style="color:#888;font-size:12px;">This link expires in 24 hours.</p>`
+    )
   }
 
   // Create public.users row
