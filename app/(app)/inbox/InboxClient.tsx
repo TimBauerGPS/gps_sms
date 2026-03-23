@@ -356,9 +356,9 @@ export default function InboxClient() {
   // ─── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white">
+    <div className="flex h-[calc(100vh-4rem)] md:h-screen overflow-hidden bg-white">
       {/* ── Left panel: conversation list ───────────────────────────────────── */}
-      <div className="w-80 flex-shrink-0 flex flex-col border-r border-slate-200">
+      <div className={`flex-shrink-0 flex flex-col border-r border-slate-200 w-full md:w-80 ${selectedId ? 'hidden md:flex' : 'flex'}`}>
         {/* Header */}
         <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-200">
           <h1 className="text-lg font-semibold text-slate-900">Inbox</h1>
@@ -444,10 +444,10 @@ export default function InboxClient() {
       </div>
 
       {/* ── Right panel: message thread ─────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className={`flex-1 flex flex-col min-w-0 ${!selectedId ? 'hidden md:flex' : 'flex'}`}>
         {!selectedConversation ? (
-          /* Empty state */
-          <div className="flex-1 flex flex-col items-center justify-center text-slate-400 select-none">
+          /* Empty state — desktop only */
+          <div className="hidden md:flex flex-1 flex-col items-center justify-center text-slate-400 select-none">
             <svg
               className="w-12 h-12 mb-3 text-slate-200"
               fill="none"
@@ -469,12 +469,22 @@ export default function InboxClient() {
         ) : (
           <>
             {/* Thread header */}
-            <div className="flex items-center gap-3 px-5 py-3 border-b border-slate-200 bg-white">
-              <div>
-                <h2 className="text-base font-semibold text-slate-900 leading-tight">
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200 bg-white">
+              {/* Back button — mobile only */}
+              <button
+                onClick={() => setSelectedId(null)}
+                className="md:hidden flex items-center gap-1 text-blue-600 text-sm font-medium mr-1"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="15 18 9 12 15 6" />
+                </svg>
+                Back
+              </button>
+              <div className="flex-1 min-w-0">
+                <h2 className="text-base font-semibold text-slate-900 leading-tight truncate">
                   {conversationLabel(selectedConversation)}
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-slate-500 mt-0.5 truncate">
                   {selectedConversation.customer_phone}
                   {selectedConversation.job?.albi_job_id && (
                     <span className="ml-2 text-slate-400">
@@ -547,11 +557,11 @@ export default function InboxClient() {
                 <div className="flex-1 relative">
                   <textarea
                     ref={textareaRef}
-                    rows={3}
+                    rows={2}
                     value={replyText}
                     onChange={(e) => setReplyText(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="Type a message… (Enter to send, Shift+Enter for newline)"
+                    placeholder="Type a message…"
                     className="w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                     disabled={sending}
                     maxLength={1600}

@@ -402,7 +402,7 @@ export default function SendSmsPage() {
                 ? !selectedJob?.customer_phone
                 : !phone.trim())
             }
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-7 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="w-full md:w-auto inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-7 py-3 md:py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {sending ? (
               <>

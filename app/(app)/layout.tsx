@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
+import MobileNav from '@/components/MobileNav'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -53,9 +54,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         isAdmin={isAdmin}
         pendingSignups={pendingSignups}
       />
-      <main className="ml-64 min-h-screen bg-white">
-        <div className="p-6">{children}</div>
+      <main className="md:ml-64 min-h-screen bg-white pb-16 md:pb-0">
+        <div className="p-4 md:p-6">{children}</div>
       </main>
+      <MobileNav />
     </div>
   )
 }

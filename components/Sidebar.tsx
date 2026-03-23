@@ -130,7 +130,7 @@ export default function Sidebar({ userEmail, companyName, isAdmin, pendingSignup
   }
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-64 bg-slate-900 flex flex-col border-r border-slate-700 z-40">
+    <aside className="fixed left-0 top-0 h-screen w-64 bg-slate-900 hidden md:flex flex-col border-r border-slate-700 z-40">
       {/* Logo */}
       <div className="flex items-center h-16 px-5 border-b border-slate-700 shrink-0">
         <span className="text-lg font-bold text-white tracking-tight">{companyName ?? 'Guardian SMS'}</span>
