@@ -159,10 +159,93 @@ function ApproveModal({
   )
 }
 
+function SetPasswordModal({ request, onClose }: { request: SignupRequest; onClose: () => void }) {
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState<{ password: string } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  async function handleSetPassword() {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/admin/set-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: request.email }),
+      })
+      const json = await res.json()
+      if (!res.ok) { setError(json.error ?? 'Failed'); return }
+      setResult({ password: json.password })
+    } catch {
+      setError('Network error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function copyPassword() {
+    if (!result) return
+    navigator.clipboard.writeText(result.password)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+        <div>
+          <h2 className="text-base font-semibold text-slate-900">Set Temporary Password</h2>
+          <p className="text-sm text-slate-500 mt-1">{request.name} ({request.email})</p>
+        </div>
+
+        {!result ? (
+          <>
+            <p className="text-sm text-slate-600">
+              A secure temporary password will be generated and set for this user. Share it with them directly — they can change it in Settings after logging in.
+            </p>
+            {error && <p className="text-sm text-red-600">{error}</p>}
+            <div className="flex justify-end gap-3">
+              <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900">Cancel</button>
+              <button
+                onClick={handleSetPassword}
+                disabled={loading}
+                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                {loading ? 'Generating…' : 'Generate & Set Password'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+              <p className="text-xs text-slate-500 mb-1">Temporary password for {request.email}</p>
+              <div className="flex items-center gap-3">
+                <code className="text-lg font-mono font-semibold text-slate-900 tracking-wider">{result.password}</code>
+                <button
+                  onClick={copyPassword}
+                  className="text-xs px-2 py-1 bg-slate-200 hover:bg-slate-300 rounded transition-colors"
+                >
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+            </div>
+            <p className="text-xs text-slate-500">Send this to the user. They can change it in Settings → Change Password after logging in.</p>
+            <div className="flex justify-end">
+              <button onClick={onClose} className="px-4 py-2 bg-slate-800 text-white text-sm font-medium rounded-lg hover:bg-slate-900 transition-colors">Done</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function SignupsClient({ requests: initialRequests, companies }: Props) {
   const [requests, setRequests] = useState(initialRequests)
   const [approving, setApproving] = useState<SignupRequest | null>(null)
   const [rejecting, setRejecting] = useState<string | null>(null)
+  const [settingPassword, setSettingPassword] = useState<SignupRequest | null>(null)
   const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending')
 
   const filtered = requests.filter((r) => filter === 'all' || r.status === filter)
@@ -238,23 +321,33 @@ export default function SignupsClient({ requests: initialRequests, companies }: 
                     <StatusBadge status={r.status} />
                   </td>
                   <td className="px-5 py-3 text-right">
-                    {r.status === 'pending' && (
-                      <div className="flex justify-end gap-2">
+                    <div className="flex justify-end gap-2">
+                      {r.status === 'pending' && (
+                        <>
+                          <button
+                            onClick={() => setApproving(r)}
+                            className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-md hover:bg-green-700 transition-colors"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            onClick={() => handleReject(r.id)}
+                            disabled={rejecting === r.id}
+                            className="px-3 py-1.5 border border-red-300 text-red-600 text-xs font-medium rounded-md hover:bg-red-50 disabled:opacity-50 transition-colors"
+                          >
+                            {rejecting === r.id ? '…' : 'Reject'}
+                          </button>
+                        </>
+                      )}
+                      {r.status === 'approved' && (
                         <button
-                          onClick={() => setApproving(r)}
-                          className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-md hover:bg-green-700 transition-colors"
+                          onClick={() => setSettingPassword(r)}
+                          className="px-3 py-1.5 border border-blue-300 text-blue-600 text-xs font-medium rounded-md hover:bg-blue-50 transition-colors"
                         >
-                          Approve
+                          Set Password
                         </button>
-                        <button
-                          onClick={() => handleReject(r.id)}
-                          disabled={rejecting === r.id}
-                          className="px-3 py-1.5 border border-red-300 text-red-600 text-xs font-medium rounded-md hover:bg-red-50 disabled:opacity-50 transition-colors"
-                        >
-                          {rejecting === r.id ? '…' : 'Reject'}
-                        </button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -269,6 +362,12 @@ export default function SignupsClient({ requests: initialRequests, companies }: 
           companies={companies}
           onClose={() => setApproving(null)}
           onApproved={handleApproved}
+        />
+      )}
+      {settingPassword && (
+        <SetPasswordModal
+          request={settingPassword}
+          onClose={() => setSettingPassword(null)}
         />
       )}
     </div>
