@@ -7,7 +7,7 @@ import type { Conversation, SentMessage, Job } from '@/lib/supabase/types'
 // ─── Extended types ────────────────────────────────────────────────────────────
 
 type ConversationWithJob = Conversation & {
-  job: Pick<Job, 'id' | 'customer_name' | 'albi_job_id'> | null
+  job: Pick<Job, 'id' | 'customer_name' | 'albi_job_id' | 'albi_project_url'> | null
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -120,7 +120,7 @@ export default function InboxClient() {
         customer_phone,
         last_message_at,
         unread_count,
-        job:jobs ( id, customer_name, albi_job_id )
+        job:jobs ( id, customer_name, albi_job_id, albi_project_url )
       `
       )
       .eq('company_id', companyId)
@@ -478,7 +478,19 @@ export default function InboxClient() {
                   {selectedConversation.customer_phone}
                   {selectedConversation.job?.albi_job_id && (
                     <span className="ml-2 text-slate-400">
-                      · {selectedConversation.job.albi_job_id}
+                      ·{' '}
+                      {selectedConversation.job.albi_project_url ? (
+                        <a
+                          href={selectedConversation.job.albi_project_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-500 hover:underline"
+                        >
+                          {selectedConversation.job.albi_job_id}
+                        </a>
+                      ) : (
+                        selectedConversation.job.albi_job_id
+                      )}
                     </span>
                   )}
                 </p>

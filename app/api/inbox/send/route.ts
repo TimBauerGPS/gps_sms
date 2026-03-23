@@ -139,23 +139,36 @@ export async function POST(request: NextRequest) {
       .eq('id', conversation_id)
 
     // ── 9. Email copy to albi_email ──────────────────────────────────────────
-    // TODO: implement email send to company.albi_email
-    // Subject: `[${jobLabel}] SMS Message`
-    // Body: message.trim()
-    // Use your email provider (e.g. Resend, SendGrid, Nodemailer via SMTP).
-    // Fetch job name from jobs table if conversation.job_id is set, otherwise use customerPhone.
-    //
-    // Example skeleton:
-    // if (company.albi_email) {
-    //   const jobLabel = conversation.job_id
-    //     ? (await admin.from('jobs').select('albi_job_id').eq('id', conversation.job_id).single()).data?.albi_job_id ?? customerPhone
-    //     : customerPhone
-    //   await sendEmail({
-    //     to: company.albi_email,
-    //     subject: `[${jobLabel}] SMS Message`,
-    //     text: message.trim(),
-    //   })
-    // }
+    const resendKey = process.env.RESEND_API_KEY
+    const fromEmail = process.env.RESEND_FROM_EMAIL || 'Guardian SMS <noreply@guardiansms.app>'
+    if (company.albi_email && resendKey) {
+      let jobLabel = customerPhone
+      if (conversation.job_id) {
+        const { data: jobRow } = await admin
+          .from('jobs')
+          .select('albi_job_id')
+          .eq('id', conversation.job_id)
+          .single()
+        if (jobRow?.albi_job_id) jobLabel = jobRow.albi_job_id
+      }
+      try {
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${resendKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: fromEmail,
+            to: company.albi_email,
+            subject: `[${jobLabel}] SMS Message`,
+            html: `<p><strong>Outbound SMS sent to ${jobLabel}</strong></p><p>${message.trim()}</p>`,
+          }),
+        })
+      } catch (err) {
+        console.error('[inbox/send] Failed to send albi email:', err)
+      }
+    }
 
     return NextResponse.json({ success: true })
   } catch (err) {

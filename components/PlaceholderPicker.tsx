@@ -4,7 +4,7 @@ import { useRef, useState } from 'react'
 
 // Known Albi CSV column headers available as {{placeholders}}
 const ALBI_HEADERS = [
-  'Name',
+  'Job Number',
   'Customer Name',
   'Customer Phone Number',
   'Status',

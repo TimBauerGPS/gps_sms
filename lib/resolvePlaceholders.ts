@@ -18,6 +18,14 @@ export function resolvePlaceholders(
   // Replace {{Guardian Office Name}} → company name
   result = result.replace(/\{\{Guardian Office Name\}\}/gi, () => companyName ?? '')
 
+  // Replace {{Job Number}} → the "Name" column value (the Albi job ID like 24-00123-WTR-SNA)
+  result = result.replace(/\{\{Job Number\}\}/gi, () => {
+    const found = Object.entries(rawCsvRow).find(
+      ([k]) => k.toLowerCase() === 'name'
+    )
+    return found ? String(found[1]) : jobName
+  })
+
   // Replace other {{placeholders}} from raw_csv_row (case-insensitive key match)
   result = result.replace(/\{\{([^}]+)\}\}/g, (_, key) => {
     const normalized = key.trim().toLowerCase()

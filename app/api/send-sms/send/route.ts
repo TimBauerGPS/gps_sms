@@ -196,8 +196,29 @@ export async function POST(req: NextRequest) {
       twilio_sid,
     })
 
-    // TODO: Email albi_email notification when manual SMS is sent
-    // (company.albi_email is available here when needed)
+    // ── Email copy to albi_email ─────────────────────────────────────────────
+    const resendKey = process.env.RESEND_API_KEY
+    const fromEmail = process.env.RESEND_FROM_EMAIL || 'Guardian SMS <noreply@guardiansms.app>'
+    if (company.albi_email && resendKey) {
+      const jobLabel = jobRecord?.albi_job_id ?? toPhone
+      try {
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${resendKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: fromEmail,
+            to: company.albi_email,
+            subject: `[${jobLabel}] SMS Message`,
+            html: `<p><strong>Outbound SMS sent to ${jobLabel}</strong></p><p>${resolvedMessage}</p>`,
+          }),
+        })
+      } catch (err) {
+        console.error('[send-sms/send] Failed to send albi email:', err)
+      }
+    }
 
     return NextResponse.json({ success: true, sid: twilio_sid })
   } catch (err) {

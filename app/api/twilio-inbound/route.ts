@@ -17,16 +17,23 @@ async function notifyStaff({ company, job, From, Body }: {
   staffEmails.forEach((e: string) => { if (!recipients.includes(e)) recipients.push(e) })
   if (recipients.length === 0) return
 
-  const customerName = (job?.customer_name as string | null) ?? From
-  const jobName     = (job?.albi_job_id as string | null) ?? null
-  const appUrl      = process.env.NEXT_PUBLIC_APP_URL ?? ''
+  const customerName  = (job?.customer_name as string | null) ?? From
+  const jobName       = (job?.albi_job_id as string | null) ?? null
+  const projectUrl    = (job?.albi_project_url as string | null) ?? null
+  const appUrl        = process.env.NEXT_PUBLIC_APP_URL ?? ''
+
+  const jobCell = jobName
+    ? projectUrl
+      ? `<a href="${projectUrl}" target="_blank">${jobName}</a>`
+      : jobName
+    : null
 
   const subject = `New SMS reply${jobName ? ` — ${jobName}` : ''}: ${customerName}`
   const html = `
     <p><strong>New inbound SMS reply</strong></p>
     <table cellpadding="6" cellspacing="0">
       <tr><td><strong>From</strong></td><td>${customerName} (${From})</td></tr>
-      ${jobName ? `<tr><td><strong>Job</strong></td><td>${jobName}</td></tr>` : ''}
+      ${jobCell ? `<tr><td><strong>Job</strong></td><td>${jobCell}</td></tr>` : ''}
       <tr><td><strong>Message</strong></td><td>${Body}</td></tr>
     </table>
     ${appUrl ? `<p><a href="${appUrl}/inbox">View in Guardian SMS Inbox →</a></p>` : ''}

@@ -143,6 +143,7 @@ export interface Database {
           work_start: string | null
           paid: string | null
           estimated_completion_date: string | null
+          albi_project_url: string | null
           raw_csv_row: Json
           imported_at: string
           updated_at: string
@@ -165,6 +166,7 @@ export interface Database {
           work_start?: string | null
           paid?: string | null
           estimated_completion_date?: string | null
+          albi_project_url?: string | null
           raw_csv_row?: Json
           imported_at?: string
           updated_at?: string
@@ -187,6 +189,7 @@ export interface Database {
           work_start?: string | null
           paid?: string | null
           estimated_completion_date?: string | null
+          albi_project_url?: string | null
           raw_csv_row?: Json
           imported_at?: string
           updated_at?: string

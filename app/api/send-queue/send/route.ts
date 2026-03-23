@@ -181,13 +181,28 @@ export async function POST(req: NextRequest) {
         sent_at: new Date().toISOString(),
       })
 
-      // TODO: Send email notification to albi_email when a message is sent.
-      // Integrate a transactional email provider (e.g. Resend, SendGrid, Postmark)
-      // and send a notification to company.albi_email here.
-      if (company.albi_email) {
-        console.log(
-          `[send-queue/send] TODO: email notification to ${company.albi_email} for job ${jobRow?.albi_job_id ?? queueRow.job_id}`
-        )
+      // ── Email copy to albi_email ───────────────────────────────────────────
+      const resendKey = process.env.RESEND_API_KEY
+      const fromEmail = process.env.RESEND_FROM_EMAIL || 'Guardian SMS <noreply@guardiansms.app>'
+      if (company.albi_email && resendKey) {
+        const jobLabel = jobRow?.albi_job_id ?? queueRow.job_id
+        try {
+          await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${resendKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              from: fromEmail,
+              to: company.albi_email,
+              subject: `[${jobLabel}] SMS Message`,
+              html: `<p><strong>Outbound SMS sent to ${jobLabel}</strong></p><p>${queueRow.resolved_message}</p>`,
+            }),
+          })
+        } catch (err) {
+          console.error('[send-queue/send] Failed to send albi email:', err)
+        }
       }
 
       // Mark as sent

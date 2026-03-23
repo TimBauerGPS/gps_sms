@@ -30,6 +30,7 @@ function mapHeader(lower: string): keyof JobInsert | 'albi_job_id_src' | null {
     case 'work start':                   return 'work_start'
     case 'paid':                         return 'paid'
     case 'estimated completion date':    return 'estimated_completion_date'
+    case 'link to project':              return 'albi_project_url'
     case 'name':
     case 'project name':                 return 'albi_job_id_src'
     case 'customer':
@@ -114,6 +115,11 @@ export default function UploadPage() {
             warnings.push(`Row ${i + 2}: phone "${rawPhone}" could not be normalised`)
           }
 
+          // Extract URL from "Link to Project" HTML anchor if present
+          const rawProjectLink = fields['albi_project_url'] ?? ''
+          const projectUrlMatch = rawProjectLink.match(/href=["']([^"']+)["']/)
+          const albiProjectUrl = projectUrlMatch ? projectUrlMatch[1] : (rawProjectLink || null)
+
           const job: Omit<JobInsert, 'company_id'> = {
             albi_job_id:               albiJobId,
             customer_name:             fields['customer_name']             || null,
@@ -130,6 +136,7 @@ export default function UploadPage() {
             work_start:                fields['work_start']                || null,
             paid:                      fields['paid']                      || null,
             estimated_completion_date: fields['estimated_completion_date'] || null,
+            albi_project_url:          albiProjectUrl,
             raw_csv_row:               row as unknown as Record<string, string>,
           }
 
