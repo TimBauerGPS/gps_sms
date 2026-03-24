@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
       email: request.email,
       options: {
         redirectTo: `${appUrl}/auth/callback?next=/auth/set-password`,
-        data: { company_id: resolvedCompanyId },
+        data: { company_id: resolvedCompanyId, signup_app: 'guardian-sms' },
       },
     })
     if (linkErr || !linkData) {

@@ -24,12 +24,27 @@ export async function proxy(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
 
   const { pathname } = request.nextUrl
-  const isPublic = pathname.startsWith('/login') || pathname.startsWith('/auth') || pathname.startsWith('/onboarding') || pathname === '/api/signup-request' || pathname === '/api/twilio-inbound' || pathname.startsWith('/api/check-twilio')
+  const isPublic = pathname.startsWith('/login') || pathname.startsWith('/auth') || pathname.startsWith('/onboarding') || pathname === '/api/signup-request' || pathname === '/api/twilio-inbound' || pathname.startsWith('/api/check-twilio') || pathname === '/no-access'
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
+  }
+
+  if (user && !isPublic) {
+    const { data: access } = await supabase
+      .from('user_app_access')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('app_name', 'guardian-sms')
+      .single()
+
+    if (!access) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/no-access'
+      return NextResponse.redirect(url)
+    }
   }
 
   return supabaseResponse
