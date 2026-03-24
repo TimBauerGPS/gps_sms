@@ -186,7 +186,16 @@ function SetPasswordModal({ request, onClose }: { request: SignupRequest; onClos
 
   function copyPassword() {
     if (!result) return
-    navigator.clipboard.writeText(result.password)
+    try {
+      navigator.clipboard.writeText(result.password)
+    } catch {
+      const el = document.createElement('textarea')
+      el.value = result.password
+      document.body.appendChild(el)
+      el.select()
+      document.execCommand('copy')
+      document.body.removeChild(el)
+    }
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }

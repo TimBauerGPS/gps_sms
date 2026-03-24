@@ -77,33 +77,20 @@ export async function POST(req: NextRequest) {
   )
 
   if (existingUser) {
-    // User already has a Supabase auth account — skip invite, send approval email
+    // User already has a Supabase auth account — just grant access
     authUserId = existingUser.id
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://albisms.netlify.app'
-    await sendEmail(
-      request.email,
-      'Your Allied SMS access has been approved',
-      `<p>Hi ${request.name},</p>
-       <p>Your access to Allied SMS has been approved. Since you already have an account, you can log in immediately with your existing password:</p>
-       <p><a href="${appUrl}/login">Log in to Allied SMS →</a></p>`
-    )
   } else {
-    // New user — generate invite link manually so it points to this app, not the Supabase Site URL
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://albisms.netlify.app'
-    const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
-      type: 'invite',
+    // New user — create with email pre-confirmed so they can log in immediately after Set Password
+    const { data: newUser, error: createErr } = await admin.auth.admin.createUser({
       email: request.email,
-      options: {
-        redirectTo: `${appUrl}/auth/callback?next=/auth/set-password`,
-        data: { company_id: resolvedCompanyId },
-      },
+      email_confirm: true,
+      user_metadata: { company_id: resolvedCompanyId },
     })
-    if (linkErr || !linkData) {
-      console.error('[approve-signup] generateLink error:', linkErr)
-      return NextResponse.json({ error: linkErr?.message ?? 'Failed to generate invite link' }, { status: 500 })
+    if (createErr || !newUser?.user) {
+      console.error('[approve-signup] createUser error:', createErr)
+      return NextResponse.json({ error: createErr?.message ?? 'Failed to create user' }, { status: 500 })
     }
-    authUserId = linkData.user.id
-    // No email sent here — admin uses "Set Password" button to send credentials
+    authUserId = newUser.user.id
   }
 
   // Grant app access explicitly (don't rely on trigger)
@@ -111,17 +98,16 @@ export async function POST(req: NextRequest) {
     .from('user_app_access')
     .upsert({ user_id: authUserId, app_name: 'guardian-sms', role: 'member' }, { onConflict: 'user_id,app_name' })
 
-  // Create public.users row
-  const { error: usersErr } = await admin.from('users').insert({
+  // Create public.users row (upsert so re-approving the same user doesn't fail)
+  const { error: usersErr } = await admin.from('users').upsert({
     id: authUserId,
     company_id: resolvedCompanyId,
     email: request.email,
     role: 'member',
-  })
+  }, { onConflict: 'id' })
 
   if (usersErr) {
-    console.error('[approve-signup] users insert error:', usersErr)
-    // Don't fail — auth user was created, admin can sort the DB row manually
+    console.error('[approve-signup] users upsert error:', usersErr)
   }
 
   // Mark request as approved
