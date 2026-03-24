@@ -103,15 +103,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: linkErr?.message ?? 'Failed to generate invite link' }, { status: 500 })
     }
     authUserId = linkData.user.id
-    const inviteUrl = linkData.properties.action_link
-    await sendEmail(
-      request.email,
-      'You\'ve been approved for Guardian SMS',
-      `<p>Hi ${request.name},</p>
-       <p>Your access request has been approved. Click the link below to set your password and log in:</p>
-       <p><a href="${inviteUrl}" style="background:#3b82f6;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block;">Set your password →</a></p>
-       <p style="color:#888;font-size:12px;">This link expires in 24 hours.</p>`
-    )
+    // No email sent here — admin uses "Set Password" button to send credentials
   }
 
   // Create public.users row

@@ -83,7 +83,7 @@ function ApproveModal({
         <div>
           <h2 className="text-base font-semibold text-slate-900">Approve Request</h2>
           <p className="text-sm text-slate-500 mt-1">
-            <strong>{request.name}</strong> ({request.email}) will receive an invite email to set their password.
+            <strong>{request.name}</strong> ({request.email}) will be approved. Use the <strong>Set Password</strong> button afterward to send them their login credentials.
           </p>
         </div>
 
