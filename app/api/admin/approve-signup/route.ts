@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
       email: request.email,
       options: {
         redirectTo: `${appUrl}/auth/callback?next=/auth/set-password`,
-        data: { company_id: resolvedCompanyId, signup_app: 'guardian-sms' },
+        data: { company_id: resolvedCompanyId },
       },
     })
     if (linkErr || !linkData) {
@@ -105,6 +105,11 @@ export async function POST(req: NextRequest) {
     authUserId = linkData.user.id
     // No email sent here — admin uses "Set Password" button to send credentials
   }
+
+  // Grant app access explicitly (don't rely on trigger)
+  await admin
+    .from('user_app_access')
+    .upsert({ user_id: authUserId, app_name: 'guardian-sms', role: 'member' }, { onConflict: 'user_id,app_name' })
 
   // Create public.users row
   const { error: usersErr } = await admin.from('users').insert({
