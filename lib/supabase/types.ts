@@ -399,6 +399,30 @@ export interface Database {
         }
         Relationships: []
       }
+      user_app_access: {
+        Row: {
+          id: string
+          user_id: string
+          app_name: string
+          role: string
+          granted_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          app_name: string
+          role?: string
+          granted_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          app_name?: string
+          role?: string
+          granted_at?: string
+        }
+        Relationships: []
+      }
       send_queue: {
         Row: {
           id: string
