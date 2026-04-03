@@ -1,12 +1,56 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, Suspense } from 'react'
+import { useRouter } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 type Tab = 'login' | 'request'
 
-export default function LoginPage() {
+function LoginInner() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [tab, setTab] = useState<Tab>('login')
+  const [exchanging, setExchanging] = useState(false)
+  const nextPath = searchParams.get('next') ?? '/upload'
+
+  useEffect(() => {
+    const supabase = createClient()
+
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
+        router.replace(nextPath)
+      }
+    })
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN') {
+        router.replace(nextPath)
+      }
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [nextPath, router])
+
+  // If we landed here with ?code=XXX, exchange it client-side
+  useEffect(() => {
+    const code = searchParams.get('code')
+    if (!code) return
+    setExchanging(true)
+    const supabase = createClient()
+    supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
+      if (!error) {
+        router.replace(nextPath)
+      } else {
+        console.error('Code exchange failed:', error.message)
+        setExchanging(false)
+      }
+    })
+  }, [nextPath, router, searchParams])
 
   // ── Magic link state ──────────────────────────────────────────────────────
   const [email, setEmail] = useState('')
@@ -128,9 +172,14 @@ export default function LoginPage() {
                     <p className="text-sm text-red-400">{loginError}</p>
                   </div>
                 )}
+                {exchanging && (
+                  <div className="rounded-lg border border-blue-700/50 bg-blue-900/20 px-3.5 py-2.5">
+                    <p className="text-sm text-blue-300">Signing you in…</p>
+                  </div>
+                )}
                 <button
                   type="submit"
-                  disabled={loginLoading}
+                  disabled={loginLoading || exchanging}
                   className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   {loginLoading ? 'Sending link…' : 'Send login link'}
@@ -215,5 +264,13 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginInner />
+    </Suspense>
   )
 }

@@ -8,8 +8,10 @@ export async function GET(request: NextRequest) {
   const tokenHash = searchParams.get('token_hash')
   const type = searchParams.get('type') as 'email' | 'recovery' | 'invite' | null
   const next = searchParams.get('next') ?? '/upload'
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? origin
+  const redirectPath = next.startsWith('/') ? next : '/upload'
 
-  const redirectResponse = NextResponse.redirect(`${origin}${next}`)
+  const redirectResponse = NextResponse.redirect(`${appUrl}${redirectPath}`)
 
   // Create client that writes cookies directly onto the redirect response
   // so the browser receives them in the same round-trip
