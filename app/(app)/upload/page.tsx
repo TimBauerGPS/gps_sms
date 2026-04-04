@@ -210,6 +210,9 @@ export default function UploadPage() {
         ...job,
         company_id,
       }))
+      const importedPhones = Array.from(
+        new Set(rows.map((row) => row.customer_phone).filter((phone): phone is string => Boolean(phone)))
+      )
 
       // Upsert in batches of 100 to stay within Supabase limits
       const BATCH = 100
@@ -219,6 +222,19 @@ export default function UploadPage() {
           .from('jobs')
           .upsert(batch, { onConflict: 'company_id,albi_job_id' })
         if (error) throw new Error(error.message)
+      }
+
+      if (importedPhones.length > 0) {
+        const reconcileRes = await fetch('/api/inbox/reconcile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phones: importedPhones }),
+        })
+
+        if (!reconcileRes.ok) {
+          const json = await reconcileRes.json().catch(() => ({}))
+          throw new Error(json.error ?? 'Jobs imported, but inbox reconciliation failed')
+        }
       }
 
       // Auto-fill job types from Name column (format ##-#####-JOBTYPE-OFFICE)

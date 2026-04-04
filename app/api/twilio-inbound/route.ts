@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { findBestJobForPhone } from '@/lib/inbox/reconcile'
 
 async function notifyStaff({ company, job, From, Body }: {
   company: Record<string, unknown>
@@ -106,13 +107,8 @@ export async function POST(req: NextRequest) {
       return twimlResponse()
     }
 
-    // Find a matching job for this customer phone number (best-effort)
-    const { data: job } = await admin
-      .from('jobs')
-      .select('*')
-      .eq('company_id', company.id)
-      .eq('customer_phone', From)
-      .maybeSingle()
+    // Find the best matching job for this phone number.
+    const job = await findBestJobForPhone(admin, company.id, From)
 
     // Upsert the conversation record (one row per company+phone)
     const { data: conversation, error: convErr } = await admin
