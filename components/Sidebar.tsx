@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -113,15 +114,44 @@ const navItems: NavItem[] = [
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface SidebarProps {
   userEmail: string | null
-  companyName?: string | null
-  isAdmin?: boolean
-  pendingSignups?: number
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
-export default function Sidebar({ userEmail, companyName, isAdmin, pendingSignups }: SidebarProps) {
+export default function Sidebar({ userEmail }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
+  const [companyName, setCompanyName] = useState<string | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [pendingSignups, setPendingSignups] = useState(0)
+
+  useEffect(() => {
+    const prefetchTargets = [...navItems.map((item) => item.href), '/admin/signups']
+    prefetchTargets.forEach((href) => router.prefetch(href))
+  }, [router])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadSidebarMeta() {
+      try {
+        const res = await fetch('/api/sidebar-meta', { cache: 'no-store' })
+        if (!res.ok) return
+        const json = await res.json()
+        if (cancelled) return
+        setCompanyName(json.companyName ?? null)
+        setIsAdmin(Boolean(json.isAdmin))
+        setPendingSignups(json.pendingSignups ?? 0)
+      } catch (error) {
+        console.warn('[sidebar] Failed to load sidebar meta:', error)
+      }
+    }
+
+    void loadSidebarMeta()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   async function handleSignOut() {
     const supabase = createClient()
@@ -180,7 +210,7 @@ export default function Sidebar({ userEmail, companyName, isAdmin, pendingSignup
                 </svg>
                 Signups
               </span>
-              {(pendingSignups ?? 0) > 0 && (
+              {pendingSignups > 0 && (
                 <span className="ml-auto bg-amber-500 text-white text-xs font-bold rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center">
                   {pendingSignups}
                 </span>

@@ -67,6 +67,19 @@ export default function UploadPage() {
   const [result, setResult]         = useState<{ count: number } | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
 
+  function triggerInboxReconciliation(phones: string[]) {
+    if (phones.length === 0) return
+
+    void fetch('/api/inbox/reconcile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phones }),
+      keepalive: true,
+    }).catch((error) => {
+      console.warn('[upload] Inbox reconciliation did not complete:', error)
+    })
+  }
+
   // ── parse CSV ──────────────────────────────────────────────────────────────
 
   function processFile(file: File) {
@@ -224,18 +237,7 @@ export default function UploadPage() {
         if (error) throw new Error(error.message)
       }
 
-      if (importedPhones.length > 0) {
-        const reconcileRes = await fetch('/api/inbox/reconcile', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phones: importedPhones }),
-        })
-
-        if (!reconcileRes.ok) {
-          const json = await reconcileRes.json().catch(() => ({}))
-          throw new Error(json.error ?? 'Jobs imported, but inbox reconciliation failed')
-        }
-      }
+      triggerInboxReconciliation(importedPhones)
 
       // Auto-fill job types from Name column (format ##-#####-JOBTYPE-OFFICE)
       const newTypes = new Set<string>()

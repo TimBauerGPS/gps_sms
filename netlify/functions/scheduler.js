@@ -14,6 +14,26 @@ function makeSupabase() {
   return createClient(url, key)
 }
 
+function resolveAppUrl() {
+  return process.env.NEXT_PUBLIC_APP_URL || 'https://albisms.netlify.app'
+}
+
+async function sendReminderEmail({ to, subject, html }) {
+  const key = process.env.RESEND_API_KEY
+  if (!key || !to || to.length === 0) return
+
+  const from = process.env.RESEND_FROM_EMAIL || 'Guardian SMS <noreply@guardiansms.app>'
+
+  await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ from, to, subject, html }),
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Placeholder resolution
 // ---------------------------------------------------------------------------
@@ -311,10 +331,62 @@ async function processStatusChangePlan(supabase, company, plan) {
   }
 }
 
+async function sendQueueGracePeriodReminder(supabase, company) {
+  const recipients = Array.isArray(company.staff_notification_emails)
+    ? company.staff_notification_emails.filter(Boolean)
+    : []
+
+  if (recipients.length === 0) return
+
+  const now = new Date()
+  const sevenDaysAgo = new Date(now)
+  sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - 7)
+  const sixDaysAgo = new Date(now)
+  sixDaysAgo.setUTCDate(sixDaysAgo.getUTCDate() - 6)
+
+  const { data: rows, error } = await supabase
+    .from('send_queue')
+    .select(`
+      id,
+      queued_at,
+      plan:message_plans ( trigger_type )
+    `)
+    .eq('company_id', company.id)
+    .eq('status', 'pending')
+    .gte('queued_at', sevenDaysAgo.toISOString())
+    .lt('queued_at', sixDaysAgo.toISOString())
+
+  if (error) {
+    console.error(`[scheduler] Failed to load grace-period reminders for company=${company.id}:`, error)
+    return
+  }
+
+  const pendingCount = (rows ?? []).filter((row) => {
+    const plan = Array.isArray(row.plan) ? row.plan[0] : row.plan
+    return plan?.trigger_type === 'status_change'
+  }).length
+  if (pendingCount === 0) return
+
+  const appUrl = resolveAppUrl()
+  const subject = `${pendingCount} queued status-change text message${pendingCount === 1 ? '' : 's'} need review`
+  const html = `
+    <p>There are ${pendingCount} text message${pendingCount === 1 ? '' : 's'} that are waiting to be sent out due to status changes. Please login to review these.</p>
+    <p><a href="${appUrl}/send-queue">Open message queue →</a></p>
+    <p><a href="${appUrl}/login">Log in to Guardian SMS →</a></p>
+  `
+
+  try {
+    await sendReminderEmail({ to: recipients, subject, html })
+    console.log(`[scheduler] Sent grace-period reminder for company=${company.id} count=${pendingCount}`)
+  } catch (err) {
+    console.error(`[scheduler] Failed to send grace-period reminder for company=${company.id}:`, err)
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Main handler
 // ---------------------------------------------------------------------------
-export const handler = async (event, context) => {
+export const handler = async () => {
   console.log('[scheduler] Starting daily run at', new Date().toISOString())
 
   let supabase
@@ -363,6 +435,8 @@ export const handler = async (event, context) => {
         console.error(`[scheduler] Unhandled error processing plan=${plan.id}:`, err)
       }
     }
+
+    await sendQueueGracePeriodReminder(supabase, company)
   }
 
   console.log('[scheduler] Daily run complete at', new Date().toISOString())
