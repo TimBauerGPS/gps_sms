@@ -17,7 +17,7 @@ function resolveAppUrl(request: NextRequest): string {
   return new URL(request.url).origin
 }
 
-async function notifyStaff({ company, job, From, Body }: {
+async function notifyStaff({ company, job, From, Body, appUrl }: {
   company: Record<string, unknown>
   job: Record<string, unknown> | null
   From: string
