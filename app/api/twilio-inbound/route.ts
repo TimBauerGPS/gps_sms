@@ -2,11 +2,27 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { findBestJobForPhone } from '@/lib/inbox/reconcile'
 
+function resolveAppUrl(request: NextRequest): string {
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return process.env.NEXT_PUBLIC_APP_URL
+  }
+
+  const forwardedProto = request.headers.get('x-forwarded-proto')
+  const forwardedHost = request.headers.get('x-forwarded-host')
+
+  if (forwardedProto && forwardedHost) {
+    return `${forwardedProto}://${forwardedHost}`
+  }
+
+  return new URL(request.url).origin
+}
+
 async function notifyStaff({ company, job, From, Body }: {
   company: Record<string, unknown>
   job: Record<string, unknown> | null
   From: string
   Body: string
+  appUrl: string
 }) {
   const resendKey = process.env.RESEND_API_KEY
   const fromEmail = process.env.RESEND_FROM_EMAIL || 'Guardian SMS <noreply@guardiansms.app>'
@@ -21,7 +37,6 @@ async function notifyStaff({ company, job, From, Body }: {
   const customerName  = (job?.customer_name as string | null) ?? From
   const jobName       = (job?.albi_job_id as string | null) ?? null
   const projectUrl    = (job?.albi_project_url as string | null) ?? null
-  const appUrl        = process.env.NEXT_PUBLIC_APP_URL ?? ''
 
   const jobCell = jobName
     ? projectUrl
@@ -37,7 +52,8 @@ async function notifyStaff({ company, job, From, Body }: {
       ${jobCell ? `<tr><td><strong>Job</strong></td><td>${jobCell}</td></tr>` : ''}
       <tr><td><strong>Message</strong></td><td>${Body}</td></tr>
     </table>
-    ${appUrl ? `<p><a href="${appUrl}/inbox">View in Guardian SMS Inbox →</a></p>` : ''}
+    <p><a href="${appUrl}/inbox">Open Guardian SMS Inbox →</a></p>
+    <p><a href="${appUrl}/login">Log in to Guardian SMS →</a></p>
   `
 
   try {
@@ -77,6 +93,7 @@ export async function POST(req: NextRequest) {
     }
 
     const admin = createAdminClient()
+    const appUrl = resolveAppUrl(req)
 
     // Look up company by their Twilio phone number
     const { data: company, error: companyErr } = await admin
@@ -164,7 +181,7 @@ export async function POST(req: NextRequest) {
     )
 
     // Notify staff via email
-    await notifyStaff({ company, job, From, Body })
+    await notifyStaff({ company, job, From, Body, appUrl })
 
     return twimlResponse()
 

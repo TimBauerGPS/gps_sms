@@ -55,7 +55,6 @@ export async function reconcileInboxForPhones(
       .update({ job_id: job.id })
       .eq('company_id', companyId)
       .eq('customer_phone', phone)
-      .or(`job_id.is.null,job_id.neq.${job.id}`)
       .select('id')
 
     if (convError) {
@@ -64,19 +63,33 @@ export async function reconcileInboxForPhones(
 
     updatedConversations += convUpdate?.length ?? 0
 
-    const { data: messageUpdate, error: messageError } = await admin
+    const { data: inboundMessageUpdate, error: inboundMessageError } = await admin
       .from('sent_messages')
       .update({ job_id: job.id })
       .eq('company_id', companyId)
       .is('job_id', null)
-      .or(`from_phone.eq.${phone},to_phone.eq.${phone}`)
+      .eq('from_phone', phone)
       .select('id')
 
-    if (messageError) {
-      throw messageError
+    if (inboundMessageError) {
+      throw inboundMessageError
     }
 
-    updatedMessages += messageUpdate?.length ?? 0
+    updatedMessages += inboundMessageUpdate?.length ?? 0
+
+    const { data: outboundMessageUpdate, error: outboundMessageError } = await admin
+      .from('sent_messages')
+      .update({ job_id: job.id })
+      .eq('company_id', companyId)
+      .is('job_id', null)
+      .eq('to_phone', phone)
+      .select('id')
+
+    if (outboundMessageError) {
+      throw outboundMessageError
+    }
+
+    updatedMessages += outboundMessageUpdate?.length ?? 0
   }
 
   return {
