@@ -23,6 +23,10 @@ interface ImportResult {
   importedPhones: string[]
 }
 
+interface ImportParsedJobsOptions {
+  reconcileInbox?: boolean
+}
+
 export function normalizePhone(raw: string): string | null {
   const digits = raw.replace(/\D/g, '')
   if (digits.length === 10) return `+1${digits}`
@@ -164,7 +168,8 @@ export function buildPreviewRows(parsed: ParsedJob[]): PreviewRow[] {
 export async function importParsedJobs(
   supabase: AdminClient,
   companyId: string,
-  parsed: ParsedJob[]
+  parsed: ParsedJob[],
+  options: ImportParsedJobsOptions = {}
 ): Promise<ImportResult> {
   const rows: JobInsert[] = parsed.map(({ job }) => ({
     ...job,
@@ -188,7 +193,10 @@ export async function importParsedJobs(
   }
 
   await syncDerivedJobTypes(supabase, companyId, parsed)
-  await reconcileInboxForPhones(supabase, companyId, importedPhones)
+
+  if (options.reconcileInbox !== false) {
+    await reconcileInboxForPhones(supabase, companyId, importedPhones)
+  }
 
   return {
     count: rows.length,

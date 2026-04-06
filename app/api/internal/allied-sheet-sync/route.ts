@@ -42,7 +42,9 @@ export async function POST() {
       return NextResponse.json({ ok: true, skipped: true, reason: 'Sheet contained no importable rows.' })
     }
 
-    const result = await importParsedJobs(admin, company.id, parsed.parsed)
+    const result = await importParsedJobs(admin, company.id, parsed.parsed, {
+      reconcileInbox: false,
+    })
 
     await admin
       .from('companies')

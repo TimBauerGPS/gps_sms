@@ -98,6 +98,19 @@ export default function UploadPage() {
     setPreview(parsedResult.preview)
   }
 
+  function triggerInboxReconciliation(phones: string[]) {
+    if (phones.length === 0) return
+
+    void fetch('/api/inbox/reconcile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phones }),
+      keepalive: true,
+    }).catch((error) => {
+      console.warn('[upload] Inbox reconciliation did not complete:', error)
+    })
+  }
+
   function processFile(file: File) {
     if (!file.name.endsWith('.csv')) return
 
@@ -135,7 +148,10 @@ export default function UploadPage() {
     setResult(null)
 
     try {
-      const importResult = await importParsedJobs(supabase, company.id, parsed)
+      const importResult = await importParsedJobs(supabase, company.id, parsed, {
+        reconcileInbox: false,
+      })
+      triggerInboxReconciliation(importResult.importedPhones)
       setResult({ count: importResult.count })
       setParsed([])
       setPreview([])
@@ -161,7 +177,7 @@ export default function UploadPage() {
         body: JSON.stringify({ sheetUrl }),
       })
 
-      const data = await response.json() as GoogleSheetTestResult & { error?: string }
+      const data = await parseJsonResponse<GoogleSheetTestResult & { error?: string }>(response)
       if (!response.ok) {
         throw new Error(data.error || 'Failed to test Google Sheet.')
       }
@@ -192,13 +208,13 @@ export default function UploadPage() {
         body: JSON.stringify({ sheetUrl }),
       })
 
-      const data = await response.json() as {
+      const data = await parseJsonResponse<{
         count?: number
         spreadsheetTitle?: string
         worksheetTitle?: string
         warningCount?: number
         error?: string
-      }
+      }>(response)
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to import Google Sheet.')
@@ -443,4 +459,14 @@ export default function UploadPage() {
       </section>
     </div>
   )
+}
+
+async function parseJsonResponse<T>(response: Response): Promise<T> {
+  const text = await response.text()
+
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    throw new Error(text.startsWith('<') ? 'The server timed out before the import finished. Please try again.' : text)
+  }
 }

@@ -66,6 +66,7 @@ export async function readGoogleSheet(sheetUrl: string): Promise<GoogleSheetData
 
   const values = await fetchSheetValues(spreadsheetId, worksheetTitle, accessToken)
   const matrix = values.map((row) => row.map((value) => value?.trim() ?? ''))
+  await hydrateHyperlinkColumn(spreadsheetId, worksheetTitle, matrix, accessToken)
   const headers = matrix[0]?.filter(Boolean) ?? []
 
   return {
@@ -77,6 +78,30 @@ export async function readGoogleSheet(sheetUrl: string): Promise<GoogleSheetData
     totalRows: Math.max(matrix.length - 1, 0),
     sampleRows: buildRowObjectsFromMatrix(matrix.slice(0, 4)),
   }
+}
+
+async function hydrateHyperlinkColumn(
+  spreadsheetId: string,
+  worksheetTitle: string,
+  matrix: string[][],
+  accessToken: string
+) {
+  const headers = matrix[0] ?? []
+  const linkColumnIndex = headers.findIndex((header) => header.trim().toLowerCase() === 'link to project')
+  if (linkColumnIndex < 0) return
+
+  const columnLetter = toColumnLetter(linkColumnIndex)
+  const rows = await fetchHyperlinkColumn(spreadsheetId, worksheetTitle, columnLetter, accessToken)
+
+  rows.forEach((cell, rowIndex) => {
+    if (!matrix[rowIndex]) {
+      matrix[rowIndex] = []
+    }
+
+    const currentValue = matrix[rowIndex][linkColumnIndex]?.trim() ?? ''
+    const nextValue = cell.hyperlink || cell.formattedValue || currentValue
+    matrix[rowIndex][linkColumnIndex] = nextValue
+  })
 }
 
 function buildRowObjectsFromMatrix(matrix: string[][]): Record<string, string>[] {
@@ -134,6 +159,55 @@ async function fetchSheetValues(spreadsheetId: string, worksheetTitle: string, a
 
   const data = await response.json() as { values?: string[][] }
   return data.values ?? []
+}
+
+async function fetchHyperlinkColumn(
+  spreadsheetId: string,
+  worksheetTitle: string,
+  columnLetter: string,
+  accessToken: string
+) {
+  const url = new URL(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`)
+  url.searchParams.set('ranges', `${worksheetTitle}!${columnLetter}:${columnLetter}`)
+  url.searchParams.set('includeGridData', 'true')
+  url.searchParams.set(
+    'fields',
+    'sheets.data.rowData.values(formattedValue,hyperlink,userEnteredValue.formulaValue)'
+  )
+
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  })
+
+  if (!response.ok) {
+    throw new Error(await readGoogleError(response, 'Failed to read hyperlink data from the spreadsheet.'))
+  }
+
+  const data = await response.json() as {
+    sheets?: Array<{
+      data?: Array<{
+        rowData?: Array<{
+          values?: Array<{
+            formattedValue?: string
+            hyperlink?: string
+            userEnteredValue?: {
+              formulaValue?: string
+            }
+          }>
+        }>
+      }>
+    }>
+  }
+
+  const rowData = data.sheets?.[0]?.data?.[0]?.rowData ?? []
+  return rowData.map((row) => {
+    const cell = row.values?.[0]
+    return {
+      formattedValue: cell?.formattedValue?.trim() ?? '',
+      hyperlink: extractHyperlink(cell?.hyperlink, cell?.userEnteredValue?.formulaValue),
+    }
+  })
 }
 
 async function getGoogleAccessToken() {
@@ -203,6 +277,28 @@ function base64UrlEncode(value: string) {
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=+$/g, '')
+}
+
+function extractHyperlink(hyperlink?: string, formulaValue?: string) {
+  if (hyperlink?.trim()) {
+    return hyperlink.trim()
+  }
+
+  const formulaMatch = formulaValue?.match(/^=HYPERLINK\("([^"]+)"/i)
+  return formulaMatch?.[1]?.trim() ?? ''
+}
+
+function toColumnLetter(index: number) {
+  let value = index + 1
+  let result = ''
+
+  while (value > 0) {
+    const remainder = (value - 1) % 26
+    result = String.fromCharCode(65 + remainder) + result
+    value = Math.floor((value - 1) / 26)
+  }
+
+  return result
 }
 
 async function readGoogleError(response: Response, fallback: string) {
