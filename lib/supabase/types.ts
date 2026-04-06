@@ -15,6 +15,8 @@ export interface Database {
           review_links: Json
           job_types: Json
           auto_send_enabled: boolean
+          google_sheet_url: string | null
+          google_sheet_last_imported_at: string | null
           created_at: string
         }
         Insert: {
@@ -28,6 +30,8 @@ export interface Database {
           review_links?: Json
           job_types?: Json
           auto_send_enabled?: boolean
+          google_sheet_url?: string | null
+          google_sheet_last_imported_at?: string | null
           created_at?: string
         }
         Update: {
@@ -41,6 +45,8 @@ export interface Database {
           review_links?: Json
           job_types?: Json
           auto_send_enabled?: boolean
+          google_sheet_url?: string | null
+          google_sheet_last_imported_at?: string | null
           created_at?: string
         }
         Relationships: []
