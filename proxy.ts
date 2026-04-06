@@ -31,6 +31,7 @@ export async function proxy(request: NextRequest) {
     pathname === '/api/signup-request' ||
     pathname === '/api/twilio-inbound' ||
     pathname.startsWith('/api/check-twilio') ||
+    pathname === '/manifest.json' ||
     pathname === '/api/no-access' ||
     pathname === '/no-access' ||
     pathname === '/api/internal/allied-sheet-sync'
@@ -60,5 +61,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest\\.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
 }
