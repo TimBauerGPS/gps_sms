@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { buildRepliedMessageSet, hasRepliedToMessage } from '@/lib/replyDedup'
 
 export async function POST(req: NextRequest) {
   try {
@@ -93,6 +94,12 @@ export async function POST(req: NextRequest) {
       .gte('sent_at', todayStart.toISOString())
     const sentTodayPhones = new Set((sentTodayRows ?? []).map((r) => r.to_phone))
 
+    const { data: messageHistoryRows } = await admin
+      .from('sent_messages')
+      .select('direction, body, to_phone, from_phone, sent_at')
+      .eq('company_id', companyId)
+    const repliedMessages = buildRepliedMessageSet(messageHistoryRows ?? [])
+
     for (const queueRow of queueRows) {
       const jobRow = queueRow.job as { customer_phone: string | null; id: string; albi_job_id: string } | null
       const toPhone = jobRow?.customer_phone
@@ -127,6 +134,19 @@ export async function POST(req: NextRequest) {
           .update({
             status: 'skipped',
             skipped_reason: 'do_not_text',
+            processed_at: new Date().toISOString(),
+          })
+          .eq('id', queueRow.id)
+        continue
+      }
+
+      if (hasRepliedToMessage(repliedMessages, toPhone, queueRow.resolved_message)) {
+        errors.push(`Row ${queueRow.id}: ${toPhone} already replied to this message in the past`)
+        await admin
+          .from('send_queue')
+          .update({
+            status: 'skipped',
+            skipped_reason: 'replied_to_same_message',
             processed_at: new Date().toISOString(),
           })
           .eq('id', queueRow.id)

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolvePlaceholders } from '@/lib/resolvePlaceholders'
+import { buildRepliedMessageSet, hasRepliedToMessage } from '@/lib/replyDedup'
 import type { Json } from '@/lib/supabase/types'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -81,6 +82,7 @@ export async function POST() {
     sentRes,
     queueRes,
     sentTodayRes,
+    historyRes,
   ] = await Promise.all([
     admin.from('companies').select('*').eq('id', company_id).single(),
     admin.from('message_plans').select('*').eq('company_id', company_id).eq('is_active', true),
@@ -96,6 +98,9 @@ export async function POST() {
       .eq('company_id', company_id)
       .eq('direction', 'outbound')
       .gte('sent_at', todayStart.toISOString()),
+    admin.from('sent_messages')
+      .select('direction, body, to_phone, from_phone, sent_at')
+      .eq('company_id', company_id),
   ])
 
   const company = companyRes.data
@@ -110,6 +115,7 @@ export async function POST() {
   const sentSet = new Set((sentRes.data ?? []).map((r) => `${r.job_id}:${r.plan_id}`))
   const queuedSet = new Set((queueRes.data ?? []).map((r) => `${r.job_id}:${r.plan_id}`))
   const sentTodayPhones = new Set((sentTodayRes.data ?? []).map((r) => r.to_phone))
+  const repliedMessages = buildRepliedMessageSet(historyRes.data ?? [])
 
   // ── Filtering pass (no DB queries) ────────────────────────────────────────
   type Candidate = { jobId: string; plan: typeof plans[number]; phone: string; autoSend: boolean }
@@ -172,6 +178,9 @@ export async function POST() {
     })
   )
 
+  let queued = 0
+  let skipped = 0
+
   // ── Build queue rows and auto-send list ────────────────────────────────────
   const toQueue: Array<{
     company_id: string
@@ -194,6 +203,11 @@ export async function POST() {
       companyName
     )
 
+    if (hasRepliedToMessage(repliedMessages, phone, resolvedMessage)) {
+      skipped++
+      continue
+    }
+
     if (autoSend) {
       toAutoSend.push({ phone, resolvedMessage, jobId, planId: plan.id })
     } else {
@@ -207,9 +221,6 @@ export async function POST() {
       })
     }
   }
-
-  let queued = 0
-  let skipped = 0
 
   // ── Bulk insert queue rows ─────────────────────────────────────────────────
   if (toQueue.length > 0) {

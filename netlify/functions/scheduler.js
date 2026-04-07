@@ -73,6 +73,55 @@ function resolveReviewLink(job, company) {
   return defaultUrl
 }
 
+function normalizeMessageBody(body) {
+  return String(body ?? '').replace(/\s+/g, ' ').trim()
+}
+
+function buildRepliedMessageSet(rows) {
+  const rowsByPhone = new Map()
+
+  for (const row of rows ?? []) {
+    const phone = row.direction === 'outbound' ? row.to_phone : row.from_phone
+    if (!phone) continue
+
+    const existing = rowsByPhone.get(phone)
+    if (existing) existing.push(row)
+    else rowsByPhone.set(phone, [row])
+  }
+
+  const repliedMessages = new Set()
+
+  for (const [phone, phoneRows] of rowsByPhone.entries()) {
+    phoneRows.sort((a, b) => {
+      const aTime = a.sent_at ? Date.parse(a.sent_at) : 0
+      const bTime = b.sent_at ? Date.parse(b.sent_at) : 0
+      return aTime - bTime
+    })
+
+    const pendingOutboundBodies = new Set()
+
+    for (const row of phoneRows) {
+      if (row.direction === 'outbound') {
+        const normalizedBody = normalizeMessageBody(row.body)
+        if (normalizedBody) pendingOutboundBodies.add(normalizedBody)
+        continue
+      }
+
+      for (const normalizedBody of pendingOutboundBodies) {
+        repliedMessages.add(`${phone}\u0000${normalizedBody}`)
+      }
+    }
+  }
+
+  return repliedMessages
+}
+
+function hasRepliedToMessage(repliedMessages, phone, message) {
+  const normalizedBody = normalizeMessageBody(message)
+  if (!phone || !normalizedBody) return false
+  return repliedMessages.has(`${phone}\u0000${normalizedBody}`)
+}
+
 // ---------------------------------------------------------------------------
 // Job-type filter helper
 // ---------------------------------------------------------------------------
@@ -153,6 +202,12 @@ async function processDateOffsetPlan(supabase, company, plan) {
     .eq('company_id', company.id)
   const doNotTextSet = new Set((dntRows ?? []).map(r => r.phone_number))
 
+  const { data: messageHistoryRows } = await supabase
+    .from('sent_messages')
+    .select('direction, body, to_phone, from_phone, sent_at')
+    .eq('company_id', company.id)
+  const repliedMessages = buildRepliedMessageSet(messageHistoryRows ?? [])
+
   for (const job of jobs ?? []) {
     // Skip jobs predating the cutoff
     if (isBeforeCutoff(job)) continue
@@ -212,6 +267,9 @@ async function processDateOffsetPlan(supabase, company, plan) {
     // Resolve message
     const message = resolvePlaceholders(plan.message_template, job, company)
 
+    // Skip if this customer previously replied after receiving the same message body
+    if (hasRepliedToMessage(repliedMessages, phone, message)) continue
+
     if (company.auto_send_enabled) {
       // Auto-send directly via Twilio
       try {
@@ -269,6 +327,12 @@ async function processStatusChangePlan(supabase, company, plan) {
     return
   }
 
+  const { data: messageHistoryRows } = await supabase
+    .from('sent_messages')
+    .select('direction, body, to_phone, from_phone, sent_at')
+    .eq('company_id', company.id)
+  const repliedMessages = buildRepliedMessageSet(messageHistoryRows ?? [])
+
   for (const job of jobs ?? []) {
     // Skip jobs predating the cutoff
     if (isBeforeCutoff(job)) continue
@@ -313,6 +377,9 @@ async function processStatusChangePlan(supabase, company, plan) {
 
     // Resolve message now (snapshot at queue time)
     const resolvedMessage = resolvePlaceholders(plan.message_template, job, company)
+
+    // Skip if this customer previously replied after receiving the same message body
+    if (hasRepliedToMessage(repliedMessages, phone, resolvedMessage)) continue
 
     // Insert into send_queue — user reviews and approves in /send-queue
     const { error: queueErr } = await supabase.from('send_queue').insert({
