@@ -25,6 +25,7 @@ interface ImportResult {
 
 interface ImportParsedJobsOptions {
   reconcileInbox?: boolean
+  batchSize?: number
 }
 
 export function normalizePhone(raw: string): string | null {
@@ -180,7 +181,7 @@ export async function importParsedJobs(
     new Set(rows.map((row) => row.customer_phone).filter((phone): phone is string => Boolean(phone)))
   )
 
-  const batchSize = 100
+  const batchSize = options.batchSize ?? 500
   for (let index = 0; index < rows.length; index += batchSize) {
     const batch = rows.slice(index, index + batchSize)
     const { error } = await supabase

@@ -5,8 +5,10 @@ import { readGoogleSheet } from '@/lib/googleSheets'
 import { importParsedJobs, parseImportedRows } from '@/lib/jobs/import'
 
 const ALLIED_COMPANY_NAME = 'Allied Restoration Services'
+export const maxDuration = 60
 
 export async function POST(request: NextRequest) {
+  const startedAt = Date.now()
   try {
     const supabase = await createClient()
     const {
@@ -48,15 +50,19 @@ export async function POST(request: NextRequest) {
     }
 
     const sheet = await readGoogleSheet(sheetUrl)
+    const afterReadAt = Date.now()
     const parsed = parseImportedRows(sheet.rows)
+    const afterParseAt = Date.now()
 
     if (parsed.parsed.length === 0) {
       return NextResponse.json({ error: 'The selected sheet did not contain any importable rows.' }, { status: 400 })
     }
 
     const result = await importParsedJobs(admin, company.id, parsed.parsed, {
+      batchSize: 500,
       reconcileInbox: false,
     })
+    const afterImportAt = Date.now()
 
     await admin
       .from('companies')
@@ -65,6 +71,17 @@ export async function POST(request: NextRequest) {
         google_sheet_last_imported_at: new Date().toISOString(),
       })
       .eq('id', company.id)
+
+    console.log('[google-sheet/import] Completed import', {
+      companyId: company.id,
+      totalRows: sheet.totalRows,
+      parsedRows: parsed.parsed.length,
+      warningCount: parsed.rowErrors.length,
+      msReadSheet: afterReadAt - startedAt,
+      msParseRows: afterParseAt - afterReadAt,
+      msImportJobs: afterImportAt - afterParseAt,
+      msTotal: Date.now() - startedAt,
+    })
 
     return NextResponse.json({
       ok: true,
@@ -75,7 +92,10 @@ export async function POST(request: NextRequest) {
       warningCount: parsed.rowErrors.length,
     })
   } catch (error) {
-    console.error('[google-sheet/import] Failed to import sheet:', error)
+    console.error('[google-sheet/import] Failed to import sheet:', {
+      error,
+      msTotal: Date.now() - startedAt,
+    })
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to import the Google Sheet.' },
       { status: 500 }
