@@ -259,7 +259,7 @@ export default function UploadPage() {
           <div className="flex flex-col gap-1 mb-4">
             <h2 className="text-lg font-semibold text-slate-900">Google Sheets Import</h2>
             <p className="text-sm text-slate-500">
-              Paste the shared sheet link here, test that the service account can read it, then import it on demand. After a successful import, it will sync automatically each day at 8:00 PM Pacific.
+              Paste the shared sheet link here, test that the service account can read it, then import it on demand. After a successful import, it will sync automatically each day around 8:00 PM Pacific.
             </p>
           </div>
 

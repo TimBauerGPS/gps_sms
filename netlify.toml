@@ -8,8 +8,10 @@
 [functions]
   directory = "netlify/functions"
 
+[functions."allied-sheet-sync"]
+  schedule = "0 * * * *"
+
 [[headers]]
   for = "/api/twilio-inbound"
   [headers.values]
     X-Frame-Options = "DENY"
-

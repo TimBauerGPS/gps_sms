@@ -42,3 +42,6 @@ next-env.d.ts
 
 # Legacy reference scripts — contain company data
 _reference/
+
+# Local Netlify folder
+.netlify

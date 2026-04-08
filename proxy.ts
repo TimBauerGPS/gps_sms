@@ -25,6 +25,7 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl
   const isPublic =
+    pathname.startsWith('/.netlify/functions/') ||
     pathname.startsWith('/login') ||
     pathname.startsWith('/auth') ||
     pathname.startsWith('/onboarding') ||
