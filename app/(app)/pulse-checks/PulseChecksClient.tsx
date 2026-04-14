@@ -2,7 +2,7 @@
 
 import { useRef, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import type { Company, Job } from '@/lib/supabase/types'
+import type { Company } from '@/lib/supabase/types'
 import PlaceholderPicker from '@/components/PlaceholderPicker'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -22,6 +22,12 @@ interface JobRow {
 }
 
 type Step = 1 | 2 | 3
+
+interface SendResult {
+  sent: number
+  skipped: number
+  skippedDoNotText: JobRow[]
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -72,10 +78,7 @@ export default function PulseChecksClient({
 
   // ── Step 3 / send state ───────────────────────────────────────────────────
   const [sending, setSending] = useState(false)
-  const [sendResult, setSendResult] = useState<{
-    sent: number
-    skipped: number
-  } | null>(null)
+  const [sendResult, setSendResult] = useState<SendResult | null>(null)
   const [sendError, setSendError] = useState<string | null>(null)
 
   // ── Derived ───────────────────────────────────────────────────────────────
@@ -208,7 +211,13 @@ export default function PulseChecksClient({
         throw new Error(json?.error ?? `HTTP ${res.status}`)
       }
 
-      setSendResult({ sent: json.sent ?? 0, skipped: json.skipped ?? 0 })
+      setSendResult({
+        sent: json.sent ?? 0,
+        skipped: json.skipped ?? 0,
+        skippedDoNotText: Array.isArray(json.skipped_do_not_text)
+          ? json.skipped_do_not_text
+          : [],
+      })
       setStep(1)
       // Reset for fresh use
       setMessageTemplate('')
@@ -247,23 +256,48 @@ export default function PulseChecksClient({
 
       {/* Success banner */}
       {sendResult && (
-        <div className="mb-6 flex items-center gap-3 rounded-lg bg-green-50 border border-green-200 px-4 py-3">
-          <svg
-            className="w-5 h-5 text-green-500 shrink-0"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-          </svg>
-          <p className="text-sm text-green-800 font-medium">
-            Sent to {sendResult.sent} customer
-            {sendResult.sent !== 1 ? 's' : ''}.
-            {sendResult.skipped > 0
-              ? ` Skipped ${sendResult.skipped} (do-not-text or no phone).`
-              : ''}
-          </p>
+        <div className="mb-6 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
+          <div className="flex items-center gap-3">
+            <svg
+              className="w-5 h-5 text-green-500 shrink-0"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            <p className="text-sm text-green-800 font-medium">
+              Sent to {sendResult.sent} customer
+              {sendResult.sent !== 1 ? 's' : ''}.
+              {sendResult.skipped > 0
+                ? ` Skipped ${sendResult.skipped}.`
+                : ''}
+            </p>
+          </div>
+
+          {sendResult.skippedDoNotText.length > 0 && (
+            <div className="mt-3 border-t border-green-200 pt-3">
+              <p className="text-sm font-medium text-green-900">
+                Not sent because they are on the Do Not Text list:
+              </p>
+              <ul className="mt-1 space-y-1">
+                {sendResult.skippedDoNotText.map((job) => (
+                  <li key={job.id ?? `${job.albi_job_id}-${job.customer_phone}`} className="text-sm text-green-800">
+                    {job.customer_name ?? 'Unknown customer'}
+                    {job.albi_job_id ? ` — ${job.albi_job_id}` : ''}
+                    {job.customer_phone ? ` (${job.customer_phone})` : ''}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {sendResult.skipped > sendResult.skippedDoNotText.length && (
+            <p className="mt-3 text-sm text-green-800">
+              Some additional recipients were skipped for other reasons, like missing phone numbers or send errors.
+            </p>
+          )}
         </div>
       )}
 

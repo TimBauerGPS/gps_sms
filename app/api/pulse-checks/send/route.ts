@@ -15,6 +15,13 @@ interface ReviewLink {
   url: string
 }
 
+interface DoNotTextSkippedCustomer {
+  job_id: string
+  albi_job_id: string
+  customer_name: string | null
+  customer_phone: string
+}
+
 function parseReviewLinks(raw: Json): ReviewLink[] {
   if (!Array.isArray(raw)) return []
   return raw.flatMap((item) => {
@@ -111,13 +118,12 @@ export async function POST(req: NextRequest) {
       .select('phone_number')
       .eq('company_id', company_id)
 
-    const doNotTextSet = new Set(
-      (dntRows ?? []).map((r) => r.phone_number)
-    )
+    const doNotTextSet = new Set((dntRows ?? []).map((r) => r.phone_number))
 
     let sent = 0
     let skipped = 0
     const sentJobIds: string[] = []
+    const skippedDoNotText: DoNotTextSkippedCustomer[] = []
 
     const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilio_account_sid}/Messages.json`
     const authHeader =
@@ -131,7 +137,7 @@ export async function POST(req: NextRequest) {
       const { data: job, error: jobErr } = await supabase
         .from('jobs')
         .select(
-          'id, albi_job_id, customer_phone, raw_csv_row, company_id'
+          'id, albi_job_id, customer_name, customer_phone, raw_csv_row, company_id'
         )
         .eq('id', job_id)
         .eq('company_id', company_id)
@@ -150,6 +156,12 @@ export async function POST(req: NextRequest) {
 
       // Check do-not-text
       if (doNotTextSet.has(phone)) {
+        skippedDoNotText.push({
+          job_id: job.id,
+          albi_job_id: job.albi_job_id,
+          customer_name: job.customer_name,
+          customer_phone: phone,
+        })
         skipped++
         continue
       }
@@ -221,7 +233,11 @@ export async function POST(req: NextRequest) {
       job_ids_sent: sentJobIds,
     })
 
-    return NextResponse.json({ sent, skipped })
+    return NextResponse.json({
+      sent,
+      skipped,
+      skipped_do_not_text: skippedDoNotText,
+    })
   } catch (err) {
     console.error('[pulse-checks/send] Unexpected error:', err)
     return NextResponse.json(
