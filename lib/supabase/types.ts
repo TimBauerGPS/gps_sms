@@ -264,6 +264,63 @@ export interface Database {
           }
         ]
       }
+      message_media: {
+        Row: {
+          id: string
+          company_id: string
+          sent_message_id: string
+          media_index: number
+          twilio_media_sid: string | null
+          storage_bucket: string
+          storage_path: string
+          filename: string | null
+          mime_type: string | null
+          file_size_bytes: number | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          company_id: string
+          sent_message_id: string
+          media_index: number
+          twilio_media_sid?: string | null
+          storage_bucket: string
+          storage_path: string
+          filename?: string | null
+          mime_type?: string | null
+          file_size_bytes?: number | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          sent_message_id?: string
+          media_index?: number
+          twilio_media_sid?: string | null
+          storage_bucket?: string
+          storage_path?: string
+          filename?: string | null
+          mime_type?: string | null
+          file_size_bytes?: number | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_media_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_media_sent_message_id_fkey"
+            columns: ["sent_message_id"]
+            isOneToOne: false
+            referencedRelation: "sent_messages"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       conversations: {
         Row: {
           id: string
@@ -516,6 +573,7 @@ export type User = Database['public']['Tables']['users']['Row']
 export type MessagePlan = Database['public']['Tables']['message_plans']['Row']
 export type Job = Database['public']['Tables']['jobs']['Row']
 export type SentMessage = Database['public']['Tables']['sent_messages']['Row']
+export type MessageMedia = Database['public']['Tables']['message_media']['Row']
 export type Conversation = Database['public']['Tables']['conversations']['Row']
 export type DoNotText = Database['public']['Tables']['do_not_text']['Row']
 export type PulseCheckRun = Database['public']['Tables']['pulse_check_runs']['Row']

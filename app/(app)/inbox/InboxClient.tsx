@@ -2,12 +2,18 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import type { Conversation, SentMessage, Job } from '@/lib/supabase/types'
+import type { MessageAttachment } from '@/lib/messages/attachments'
+import MessageAttachments from '@/components/MessageAttachments'
+import type { Conversation, Job, SentMessage } from '@/lib/supabase/types'
 
 // ─── Extended types ────────────────────────────────────────────────────────────
 
 type ConversationWithJob = Conversation & {
   job: Pick<Job, 'id' | 'customer_name' | 'albi_job_id' | 'albi_project_url'> | null
+}
+
+type SentMessageWithMedia = SentMessage & {
+  message_media: MessageAttachment[]
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -61,7 +67,7 @@ export default function InboxClient() {
   // State
   const [conversations, setConversations] = useState<ConversationWithJob[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [messages, setMessages] = useState<SentMessage[]>([])
+  const [messages, setMessages] = useState<SentMessageWithMedia[]>([])
   const [loadingConvs, setLoadingConvs] = useState(true)
   const [loadingMsgs, setLoadingMsgs] = useState(false)
   const [replyText, setReplyText] = useState('')
@@ -151,21 +157,17 @@ export default function InboxClient() {
     async (conv: ConversationWithJob) => {
       setLoadingMsgs(true)
       setMessages([])
-      const phone = conv.customer_phone
+      const res = await fetch(
+        `/api/inbox/messages?conversationId=${encodeURIComponent(conv.id)}`
+      )
 
-      const { data, error } = await supabase
-        .from('sent_messages')
-        .select('*')
-        .eq('company_id', conv.company_id)
-        .or(`to_phone.eq.${phone},from_phone.eq.${phone}`)
-        .order('sent_at', { ascending: true })
-
-      if (!error && data) {
-        setMessages(data)
+      if (res.ok) {
+        const json = await res.json()
+        setMessages((json.messages ?? []) as SentMessageWithMedia[])
       }
       setLoadingMsgs(false)
     },
-    [supabase]
+    []
   )
 
   useEffect(() => {
@@ -221,7 +223,10 @@ export default function InboxClient() {
           filter: `company_id=eq.${companyId}`,
         },
         (payload) => {
-          const newMsg = payload.new as SentMessage
+          const newMsg: SentMessageWithMedia = {
+            ...(payload.new as SentMessage),
+            message_media: [],
+          }
 
           // Update conversation list (bump last_message_at, increment unread for inbound)
           setConversations((prev) => {
@@ -249,6 +254,11 @@ export default function InboxClient() {
             if (newMsg.from_phone === phone || newMsg.to_phone === phone) {
               // Avoid duplicates (optimistic update may have already added it)
               if (prev.some((m) => m.id === newMsg.id)) return prev
+              if (newMsg.direction === 'inbound') {
+                window.setTimeout(() => {
+                  void fetchMessages(selectedConversation)
+                }, 400)
+              }
               return [...prev, newMsg]
             }
             return prev
@@ -288,7 +298,8 @@ export default function InboxClient() {
     setSendError(null)
 
     // Optimistic update
-    const optimisticMsg: SentMessage = {
+    const optimisticMsg: SentMessageWithMedia = {
+      message_media: [],
       id: `optimistic-${Date.now()}`,
       company_id: selectedConversation.company_id,
       job_id: selectedConversation.job_id,
@@ -520,21 +531,28 @@ export default function InboxClient() {
               ) : (
                 messages.map((msg) => {
                   const isOutbound = msg.direction === 'outbound'
+                  const hasBody = Boolean(msg.body.trim())
                   return (
                     <div
                       key={msg.id}
                       className={`flex ${isOutbound ? 'justify-end' : 'justify-start'}`}
                     >
                       <div className={`max-w-[70%] ${isOutbound ? 'items-end' : 'items-start'} flex flex-col`}>
-                        <div
-                          className={`px-3.5 py-2 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap break-words ${
-                            isOutbound
-                              ? 'bg-blue-600 text-white rounded-br-sm'
-                              : 'bg-slate-100 text-slate-900 rounded-bl-sm'
-                          }`}
-                        >
-                          {msg.body}
-                        </div>
+                        {hasBody ? (
+                          <div
+                            className={`px-3.5 py-2 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap break-words ${
+                              isOutbound
+                                ? 'bg-blue-600 text-white rounded-br-sm'
+                                : 'bg-slate-100 text-slate-900 rounded-bl-sm'
+                            }`}
+                          >
+                            {msg.body}
+                          </div>
+                        ) : null}
+                        <MessageAttachments
+                          attachments={msg.message_media}
+                          tone={isOutbound ? 'dark' : 'light'}
+                        />
                         <span className="text-xs text-slate-400 mt-1 px-1">
                           {formatMessageTime(msg.sent_at)}
                         </span>

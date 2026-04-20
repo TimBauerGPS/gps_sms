@@ -83,7 +83,7 @@ function ApproveModal({
         <div>
           <h2 className="text-base font-semibold text-slate-900">Approve Request</h2>
           <p className="text-sm text-slate-500 mt-1">
-            <strong>{request.name}</strong> ({request.email}) will be approved and sent a magic-link invite to sign in.
+            <strong>{request.name}</strong> ({request.email}) will be approved. New users will receive an invite email, and existing shared-login users can sign in right away.
           </p>
         </div>
 
@@ -151,7 +151,7 @@ function ApproveModal({
             disabled={loading || (mode === 'existing' && !selectedCompanyId)}
             className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
           >
-            {loading ? 'Approving…' : 'Approve & Send Invite'}
+            {loading ? 'Approving…' : 'Approve User'}
           </button>
         </div>
       </div>

@@ -191,7 +191,7 @@ function LoginInner() {
               <div className="text-3xl">✓</div>
               <p className="text-sm font-medium text-white">Request submitted!</p>
               <p className="text-xs text-slate-400">
-                You&apos;ll receive an invite email once your account has been approved.
+                Once approved, you can sign in with this email. New users will also receive an invite email.
               </p>
               <button
                 onClick={() => { setTab('login'); setReqSuccess(false) }}
@@ -257,7 +257,7 @@ function LoginInner() {
                 {reqLoading ? 'Submitting…' : 'Request Access'}
               </button>
               <p className="text-xs text-center text-slate-500">
-                Your request will be reviewed and you&apos;ll receive an invite email once approved.
+                Your request will be reviewed. Once approved, you can sign in with this email, and new users will also receive an invite email.
               </p>
             </form>
           )}

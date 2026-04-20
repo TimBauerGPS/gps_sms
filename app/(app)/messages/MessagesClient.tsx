@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import MessageAttachments from '@/components/MessageAttachments'
 import type { MessageRow } from './page'
 
 const PAGE_SIZE = 50
@@ -82,7 +83,11 @@ export default function MessagesClient({ initialMessages }: Props) {
       if (q) {
         const inPhone   = msg.to_phone.toLowerCase().includes(q) || msg.from_phone.toLowerCase().includes(q)
         const inJobName = (msg.job_name ?? '').toLowerCase().includes(q)
-        if (!inPhone && !inJobName) return false
+        const inBody = msg.body.toLowerCase().includes(q)
+        const inAttachment = msg.message_media.some((attachment) =>
+          (attachment.filename ?? '').toLowerCase().includes(q)
+        )
+        if (!inPhone && !inJobName && !inBody && !inAttachment) return false
       }
 
       return true
@@ -193,7 +198,16 @@ export default function MessagesClient({ initialMessages }: Props) {
                     {msg.direction === 'outbound' ? msg.to_phone : msg.from_phone}
                   </td>
                   <td className="px-4 py-3 text-slate-700 max-w-xs">
-                    <ExpandableBody body={msg.body} />
+                    <div className="space-y-2">
+                      {msg.body ? (
+                        <ExpandableBody body={msg.body} />
+                      ) : msg.message_media.length > 0 ? (
+                        <span className="text-slate-400 italic">Attachment only</span>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                      <MessageAttachments attachments={msg.message_media} compact />
+                    </div>
                   </td>
                 </tr>
               ))}

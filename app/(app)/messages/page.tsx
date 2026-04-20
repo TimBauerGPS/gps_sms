@@ -1,10 +1,16 @@
 import { redirect } from 'next/navigation'
+import { createAdminClient } from '@/lib/supabase/admin'
+import {
+  listStoredMessageAttachments,
+  type MessageAttachment,
+} from '@/lib/messages/attachments'
 import { createClient } from '@/lib/supabase/server'
-import type { SentMessage, Job } from '@/lib/supabase/types'
+import type { SentMessage } from '@/lib/supabase/types'
 import MessagesClient from './MessagesClient'
 
 export type MessageRow = SentMessage & {
   job_name: string | null
+  message_media: MessageAttachment[]
 }
 
 export default async function MessagesPage() {
@@ -24,6 +30,7 @@ export default async function MessagesPage() {
   if (!userRow) redirect('/onboarding')
 
   const company_id = userRow.company_id
+  const admin = createAdminClient()
 
   // Fetch last 200 sent_messages with job data
   const { data: messages, error } = await supabase
@@ -38,7 +45,7 @@ export default async function MessagesPage() {
   }
 
   // Shape data for the client component
-  const rows: MessageRow[] = (messages ?? []).map((m) => {
+  const rows: MessageRow[] = await Promise.all((messages ?? []).map(async (m) => {
     // Supabase returns joined rows as an object or array — handle both
     const jobData = m.jobs as { albi_job_id: string } | { albi_job_id: string }[] | null
     let job_name: string | null = null
@@ -48,10 +55,18 @@ export default async function MessagesPage() {
       job_name = jobData.albi_job_id ?? null
     }
 
-    // Strip the joined jobs field and add job_name
     const { jobs: _jobs, ...rest } = m as typeof m & { jobs: unknown }
-    return { ...rest, job_name } as MessageRow
-  })
+    return {
+      ...rest,
+      job_name,
+      message_media: await listStoredMessageAttachments(admin, {
+        companyId: company_id,
+        direction: m.direction,
+        messageId: m.id,
+        twilioSid: m.twilio_sid,
+      }),
+    } as MessageRow
+  }))
 
   return <MessagesClient initialMessages={rows} />
 }

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { findBestJobForPhone } from '@/lib/inbox/reconcile'
+import {
+  extractInboundMediaFromParams,
+  syncInboundTwilioMessage,
+} from '@/lib/twilio/inbound'
 
 function resolveAppUrl(request: NextRequest): string {
   if (process.env.NEXT_PUBLIC_APP_URL) {
@@ -84,8 +87,10 @@ export async function POST(req: NextRequest) {
     const text = await req.text()
     const params = new URLSearchParams(text)
     const From = params.get('From') // customer's phone number
-    const To   = params.get('To')   // company's Twilio number
+    const To = params.get('To') // company's Twilio number
     const Body = params.get('Body') || ''
+    const MessageSid = params.get('MessageSid')
+    const mediaItems = extractInboundMediaFromParams(params)
 
     if (!From || !To) {
       console.warn('[twilio-inbound] Missing From or To in payload')
@@ -124,64 +129,35 @@ export async function POST(req: NextRequest) {
       return twimlResponse()
     }
 
-    // Find the best matching job for this phone number.
-    const job = await findBestJobForPhone(admin, company.id, From)
-
-    // Upsert the conversation record (one row per company+phone)
-    const { data: conversation, error: convErr } = await admin
-      .from('conversations')
-      .upsert(
-        {
-          company_id: company.id,
-          job_id: job?.id ?? null,
-          customer_phone: From,
-          last_message_at: new Date().toISOString(),
-          unread_count: 1,
-        },
-        { onConflict: 'company_id,customer_phone' }
-      )
-      .select()
-      .single()
-
-    if (convErr) console.error('[twilio-inbound] conversation upsert error:', convErr)
-
-    // Increment unread_count
-    if (conversation?.id) {
-      const { error: rpcErr } = await admin.rpc('increment_unread', {
-        conversation_id: conversation.id,
-      })
-      if (rpcErr) {
-        console.warn('[twilio-inbound] increment_unread RPC failed, falling back:', rpcErr.message)
-        await admin
-          .from('conversations')
-          .update({
-            unread_count: (conversation.unread_count ?? 0) + 1,
-            last_message_at: new Date().toISOString(),
-          })
-          .eq('id', conversation.id)
-      }
-    }
-
-    // Record the inbound message
-    const { error: msgErr } = await admin.from('sent_messages').insert({
-      company_id: company.id,
-      job_id:     job?.id ?? null,
-      plan_id:    null,
-      direction:  'inbound',
-      body:       Body,
-      to_phone:   To,
-      from_phone: From,
-      sent_at:    new Date().toISOString(),
+    const syncResult = await syncInboundTwilioMessage({
+      admin,
+      body: Body,
+      company,
+      from: From,
+      mediaItems,
+      messageSid: MessageSid,
+      receivedAt: new Date().toISOString(),
+      to: To,
     })
-    if (msgErr) console.error('[twilio-inbound] sent_messages insert error:', msgErr)
 
     console.log(
       `[twilio-inbound] Recorded inbound from ${From} → company=${company.id}` +
-      (job ? ` job=${job.id}` : ' (no job match)')
+      (syncResult.job ? ` job=${syncResult.job.id}` : ' (no job match)') +
+      (syncResult.insertedMediaCount > 0 ? ` media=${syncResult.insertedMediaCount}` : '')
     )
 
     // Notify staff via email
-    await notifyStaff({ company, job, From, Body, appUrl })
+    if (syncResult.isNewMessage) {
+      await notifyStaff({
+        company,
+        job: syncResult.job,
+        From,
+        Body: mediaItems.length > 0 && !Body.trim()
+          ? `[${mediaItems.length} attachment${mediaItems.length === 1 ? '' : 's'}]`
+          : Body,
+        appUrl,
+      })
+    }
 
     return twimlResponse()
 

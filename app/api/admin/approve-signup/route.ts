@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAppName, getAppSlug, getCanonicalAppUrl, getInviteConfirmUrl } from '@/lib/appAuth'
 
 async function sendEmail(to: string, subject: string, html: string) {
   const key = process.env.RESEND_API_KEY
@@ -11,6 +12,21 @@ async function sendEmail(to: string, subject: string, html: string) {
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ from, to: [to], subject, html }),
   })
+}
+
+async function findAuthUserByEmail(admin: ReturnType<typeof createAdminClient>, email: string) {
+  let page = 1
+
+  while (true) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 })
+    if (error) throw error
+
+    const matchingUser = data.users.find((user) => user.email?.toLowerCase() === email.toLowerCase())
+    if (matchingUser) return matchingUser
+
+    if (!data.nextPage) return null
+    page = data.nextPage
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -32,6 +48,10 @@ export async function POST(req: NextRequest) {
   if (!requestId) return NextResponse.json({ error: 'requestId required' }, { status: 400 })
 
   const admin = createAdminClient()
+  const appName = getAppName()
+  const appSlug = getAppSlug()
+  const appUrl = getCanonicalAppUrl(new URL(req.url).origin)
+  const inviteRedirectTo = getInviteConfirmUrl(new URL(req.url).origin)
 
   // Fetch the request
   const { data: request, error: reqErr } = await admin
@@ -46,13 +66,14 @@ export async function POST(req: NextRequest) {
 
   // Resolve or create company
   let resolvedCompanyId: string = companyId ?? ''
+  let resolvedCompanyName = ''
 
   if (!resolvedCompanyId) {
     const name = (companyName ?? request.requested_company_name).trim()
     const { data: newCompany, error: companyErr } = await admin
       .from('companies')
       .insert({ name })
-      .select('id')
+      .select('id, name')
       .single()
 
     if (companyErr || !newCompany) {
@@ -61,48 +82,70 @@ export async function POST(req: NextRequest) {
     }
 
     resolvedCompanyId = newCompany.id
+    resolvedCompanyName = newCompany.name
   } else if (companyName) {
     // Update existing company name if provided
+    const trimmedCompanyName = companyName.trim()
     await admin
       .from('companies')
-      .update({ name: companyName.trim() })
+      .update({ name: trimmedCompanyName })
       .eq('id', resolvedCompanyId)
+    resolvedCompanyName = trimmedCompanyName
+  }
+
+  if (!resolvedCompanyName) {
+    const { data: company } = await admin
+      .from('companies')
+      .select('name')
+      .eq('id', resolvedCompanyId)
+      .single()
+
+    resolvedCompanyName = company?.name ?? request.requested_company_name
   }
 
   // Check if this email already exists in Supabase auth (e.g. from another app)
   let authUserId: string | null = null
-  const { data: existingUsers } = await admin.auth.admin.listUsers()
-  const existingUser = existingUsers?.users?.find(
-    (u) => u.email?.toLowerCase() === request.email.toLowerCase()
-  )
+  const email = request.email.toLowerCase()
+  const existingUser = await findAuthUserByEmail(admin, email)
 
   if (existingUser) {
-    // User already has a Supabase auth account — just grant access
+    // User already has a shared Supabase auth account — just grant access.
     authUserId = existingUser.id
   } else {
-    // New user — create with email pre-confirmed so they can log in immediately after Set Password
-    const { data: newUser, error: createErr } = await admin.auth.admin.createUser({
-      email: request.email,
-      email_confirm: true,
-      user_metadata: { company_id: resolvedCompanyId },
-    })
-    if (createErr || !newUser?.user) {
-      console.error('[approve-signup] createUser error:', createErr)
-      return NextResponse.json({ error: createErr?.message ?? 'Failed to create user' }, { status: 500 })
+    const inviteMetadata = {
+      app_name: appName,
+      app_url: appUrl,
+      signup_app: appSlug,
+      company_id: resolvedCompanyId,
+      company_name: resolvedCompanyName,
+      invited_role: 'member',
     }
-    authUserId = newUser.user.id
+
+    // New user — send an app-specific Supabase invite so the shared email template
+    // can route them back into the correct app after verification.
+    const { data: inviteResult, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
+      data: inviteMetadata,
+      redirectTo: inviteRedirectTo,
+    })
+
+    if (inviteErr || !inviteResult.user) {
+      console.error('[approve-signup] inviteUserByEmail error:', inviteErr)
+      return NextResponse.json({ error: inviteErr?.message ?? 'Failed to invite user' }, { status: 500 })
+    }
+
+    authUserId = inviteResult.user.id
   }
 
   // Grant app access explicitly (don't rely on trigger)
   await admin
     .from('user_app_access')
-    .upsert({ user_id: authUserId, app_name: 'guardian-sms', role: 'member' }, { onConflict: 'user_id,app_name' })
+    .upsert({ user_id: authUserId, app_name: appSlug, role: 'member' }, { onConflict: 'user_id,app_name' })
 
   // Create public.users row (upsert so re-approving the same user doesn't fail)
   const { error: usersErr } = await admin.from('users').upsert({
     id: authUserId,
     company_id: resolvedCompanyId,
-    email: request.email,
+    email,
     role: 'member',
   }, { onConflict: 'id' })
 
@@ -115,6 +158,18 @@ export async function POST(req: NextRequest) {
     .from('signup_requests')
     .update({ status: 'approved', company_id: resolvedCompanyId })
     .eq('id', requestId)
+
+  if (existingUser) {
+    await sendEmail(
+      email,
+      `Your ${appName} access is ready`,
+      `<p>Hi ${request.name || 'there'},</p>
+       <p>Your access to ${appName} has been approved.</p>
+       <p>You already have an account in our shared login system, so no separate invite was needed.</p>
+       <p><a href="${appUrl}/login" style="background:#2563eb;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;display:inline-block;">Sign in to ${appName}</a></p>
+       <p style="color:#666;font-size:12px;">Use the same email address you requested access with: ${email}</p>`
+    )
+  }
 
   return NextResponse.json({ ok: true })
 }

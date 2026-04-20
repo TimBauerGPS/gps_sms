@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-export async function POST(req: NextRequest) {
+export async function POST() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
   const result = {
     credentials: { ok: false, message: '' },
     phoneNumber: { ok: false, message: '' },
+    mms: { ok: false, message: '' },
     webhook: { ok: false, message: '', current: '', expected: '' },
   }
 
@@ -60,6 +61,9 @@ export async function POST(req: NextRequest) {
       const num = body.incoming_phone_numbers[0]
       phoneSid = num.sid
       result.phoneNumber = { ok: true, message: `Found: ${num.friendly_name ?? phone}` }
+      result.mms = num.capabilities?.mms
+        ? { ok: true, message: 'This phone number supports MMS' }
+        : { ok: false, message: 'This phone number does not appear to support MMS' }
     } else {
       result.phoneNumber = { ok: false, message: `${phone} not found on this account` }
       return NextResponse.json(result)

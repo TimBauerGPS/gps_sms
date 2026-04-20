@@ -172,6 +172,7 @@ export default function SettingsClient({ company }: Props) {
   type CheckResult = {
     credentials: { ok: boolean; message: string }
     phoneNumber: { ok: boolean; message: string }
+    mms: { ok: boolean; message: string }
     webhook: { ok: boolean; message: string; current: string; expected: string }
   }
   const [checkResult, setCheckResult] = useState<CheckResult | null>(null)
@@ -405,7 +406,7 @@ export default function SettingsClient({ company }: Props) {
 
           {checkResult && (
             <div className="space-y-2 text-sm">
-              {(['credentials', 'phoneNumber', 'webhook'] as const).map((key) => {
+              {(['credentials', 'phoneNumber', 'mms', 'webhook'] as const).map((key) => {
                 const item = checkResult[key]
                 const webhookItem = key === 'webhook' ? checkResult.webhook : null
                 return (
