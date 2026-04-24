@@ -32,6 +32,48 @@ function jobMatchesTypeFilter(
   return triggerStrings.some((s) => haystack.includes(s.toLowerCase()))
 }
 
+function getRawCsvValue(job: Record<string, unknown>, ...keys: string[]): string {
+  const raw = job.raw_csv_row
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return ''
+
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const normalizedKey = key.trim().toLowerCase()
+    if (keys.some((candidate) => candidate.trim().toLowerCase() === normalizedKey)) {
+      return String(value ?? '').trim()
+    }
+  }
+
+  return ''
+}
+
+function getJobName(job: Record<string, unknown>): string {
+  return (
+    getRawCsvValue(job, 'Name', 'Project Name') ||
+    String(job.albi_job_id ?? '').trim()
+  )
+}
+
+function hasAttachedRblFile(
+  job: Record<string, unknown>,
+  allJobs: Array<Record<string, unknown>>
+): boolean {
+  const customerName = String(job.customer_name ?? '').trim().toLowerCase()
+  if (!customerName) return false
+
+  const jobNamePrefix = getJobName(job).slice(0, 8).toLowerCase()
+  if (jobNamePrefix.length < 8) return false
+
+  return allJobs.some((otherJob) => {
+    if (String(otherJob.id ?? '') === String(job.id ?? '')) return false
+    if (String(otherJob.customer_name ?? '').trim().toLowerCase() !== customerName) return false
+
+    const otherName = getJobName(otherJob)
+    if (!otherName.toLowerCase().includes('rbl')) return false
+
+    return otherName.slice(0, 8).toLowerCase() === jobNamePrefix
+  })
+}
+
 interface ReviewLink {
   match_string: string
   url: string
@@ -129,6 +171,12 @@ export async function POST() {
 
       if (isBeforeCutoff(job as Record<string, unknown>)) continue
       if (!jobMatchesTypeFilter(job as Record<string, unknown>, plan.trigger_job_type_strings)) continue
+      if (
+        plan.require_no_attached_rbl_file &&
+        hasAttachedRblFile(job as Record<string, unknown>, allJobs as Array<Record<string, unknown>>)
+      ) {
+        continue
+      }
 
       if (plan.trigger_type === 'date_offset') {
         const field = plan.trigger_date_field as string

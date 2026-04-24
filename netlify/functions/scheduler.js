@@ -133,6 +133,42 @@ function jobMatchesTypeFilter(job, triggerStrings) {
   return triggerStrings.some(s => haystack.includes(s.toLowerCase()))
 }
 
+function getRawCsvValue(job, ...keys) {
+  const raw = job.raw_csv_row
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return ''
+
+  for (const [key, value] of Object.entries(raw)) {
+    const normalizedKey = key.trim().toLowerCase()
+    if (keys.some((candidate) => candidate.trim().toLowerCase() === normalizedKey)) {
+      return String(value ?? '').trim()
+    }
+  }
+
+  return ''
+}
+
+function getJobName(job) {
+  return getRawCsvValue(job, 'Name', 'Project Name') || String(job.albi_job_id ?? '').trim()
+}
+
+function hasAttachedRblFile(job, allJobs) {
+  const customerName = String(job.customer_name ?? '').trim().toLowerCase()
+  if (!customerName) return false
+
+  const jobNamePrefix = getJobName(job).slice(0, 8).toLowerCase()
+  if (jobNamePrefix.length < 8) return false
+
+  return (allJobs ?? []).some((otherJob) => {
+    if (String(otherJob.id ?? '') === String(job.id ?? '')) return false
+    if (String(otherJob.customer_name ?? '').trim().toLowerCase() !== customerName) return false
+
+    const otherName = getJobName(otherJob)
+    if (!otherName.toLowerCase().includes('rbl')) return false
+
+    return otherName.slice(0, 8).toLowerCase() === jobNamePrefix
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Date helpers
 // ---------------------------------------------------------------------------
@@ -214,6 +250,8 @@ async function processDateOffsetPlan(supabase, company, plan) {
 
     // Job-type filter
     if (!jobMatchesTypeFilter(job, plan.trigger_job_type_strings)) continue
+
+    if (plan.require_no_attached_rbl_file && hasAttachedRblFile(job, jobs)) continue
 
     // Check trigger date + offset is within the 7-day catch-up window
     const rawDate = job[field]
@@ -339,6 +377,8 @@ async function processStatusChangePlan(supabase, company, plan) {
 
     // Job-type filter
     if (!jobMatchesTypeFilter(job, plan.trigger_job_type_strings)) continue
+
+    if (plan.require_no_attached_rbl_file && hasAttachedRblFile(job, jobs)) continue
 
     // Skip if already in sent_messages for this (job_id, plan_id)
     const { data: alreadySent } = await supabase

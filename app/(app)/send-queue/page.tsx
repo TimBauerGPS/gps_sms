@@ -5,7 +5,7 @@ import SendQueueClient from './SendQueueClient'
 
 export type SendQueueRow = SendQueue & {
   job: Pick<Job, 'customer_name' | 'status' | 'customer_phone'> | null
-  plan: Pick<MessagePlan, 'trigger_type' | 'trigger_date_field' | 'trigger_offset_days' | 'trigger_status_value' | 'trigger_job_type_strings'> | null
+  plan: Pick<MessagePlan, 'trigger_type' | 'trigger_date_field' | 'trigger_offset_days' | 'trigger_status_value' | 'trigger_job_type_strings' | 'require_no_attached_rbl_file'> | null
 }
 
 export default async function SendQueuePage() {
@@ -30,7 +30,7 @@ export default async function SendQueuePage() {
     .select(`
       *,
       job:jobs ( customer_name, status, customer_phone ),
-      plan:message_plans ( trigger_type, trigger_date_field, trigger_offset_days, trigger_status_value, trigger_job_type_strings )
+      plan:message_plans ( trigger_type, trigger_date_field, trigger_offset_days, trigger_status_value, trigger_job_type_strings, require_no_attached_rbl_file )
     `)
     .eq('company_id', userRow.company_id)
     .eq('status', 'pending')

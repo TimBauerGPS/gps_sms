@@ -89,6 +89,7 @@ export interface Database {
           trigger_offset_days: number | null
           trigger_status_value: string | null
           trigger_job_type_strings: string[] | null
+          require_no_attached_rbl_file: boolean
           message_template: string
           is_active: boolean
           created_at: string
@@ -102,6 +103,7 @@ export interface Database {
           trigger_offset_days?: number | null
           trigger_status_value?: string | null
           trigger_job_type_strings?: string[] | null
+          require_no_attached_rbl_file?: boolean
           message_template: string
           is_active?: boolean
           created_at?: string
@@ -115,6 +117,7 @@ export interface Database {
           trigger_offset_days?: number | null
           trigger_status_value?: string | null
           trigger_job_type_strings?: string[] | null
+          require_no_attached_rbl_file?: boolean
           message_template?: string
           is_active?: boolean
           created_at?: string

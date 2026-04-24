@@ -22,15 +22,25 @@ const DATE_FIELD_LABELS: Record<string, string> = {
 function formatTrigger(row: SendQueueRow): string {
   const plan = row.plan
   if (!plan) return 'Unknown trigger'
+  const filters: string[] = []
+
+  if (plan.trigger_job_type_strings?.length) {
+    filters.push(plan.trigger_job_type_strings.join(', '))
+  }
+
+  if (plan.require_no_attached_rbl_file) {
+    filters.push('No attached RBL file')
+  }
+
   if (plan.trigger_type === 'date_offset') {
     const fieldLabel =
       DATE_FIELD_LABELS[plan.trigger_date_field ?? ''] ??
       plan.trigger_date_field ??
       'Unknown Date'
     const days = plan.trigger_offset_days ?? 0
-    return `${days} day${days !== 1 ? 's' : ''} after ${fieldLabel}`
+    return `${days} day${days !== 1 ? 's' : ''} after ${fieldLabel}${filters.length ? ` + ${filters.join(' + ')}` : ''}`
   }
-  return `When status = ${plan.trigger_status_value ?? '?'}`
+  return `When status = ${plan.trigger_status_value ?? '?'}${filters.length ? ` + ${filters.join(' + ')}` : ''}`
 }
 
 function truncate(text: string, maxLen: number): string {

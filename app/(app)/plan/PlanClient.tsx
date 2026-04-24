@@ -35,9 +35,19 @@ function formatTrigger(plan: MessagePlan): string {
   return `When status = ${plan.trigger_status_value ?? '?'}`
 }
 
-function formatJobTypeFilter(plan: MessagePlan): string {
-  if (!plan.trigger_job_type_strings?.length) return ''
-  return ' + ' + plan.trigger_job_type_strings.join(', ')
+function formatPlanFilters(plan: MessagePlan): string {
+  const filters: string[] = []
+
+  if (plan.trigger_job_type_strings?.length) {
+    filters.push(plan.trigger_job_type_strings.join(', '))
+  }
+
+  if (plan.require_no_attached_rbl_file) {
+    filters.push('No attached RBL file')
+  }
+
+  if (filters.length === 0) return ''
+  return ' + ' + filters.join(' + ')
 }
 
 function truncate(text: string, maxLen: number): string {
@@ -53,6 +63,7 @@ interface FormState {
   trigger_offset_days: number
   trigger_status_value: string
   trigger_job_type_strings: string[]
+  require_no_attached_rbl_file: boolean
   message_template: string
 }
 
@@ -62,6 +73,7 @@ const DEFAULT_FORM: FormState = {
   trigger_offset_days: 1,
   trigger_status_value: '',
   trigger_job_type_strings: [],
+  require_no_attached_rbl_file: false,
   message_template: '',
 }
 
@@ -114,6 +126,7 @@ export default function PlanClient({ initialPlans, companyId }: Props) {
       trigger_offset_days: plan.trigger_offset_days ?? 1,
       trigger_status_value: plan.trigger_status_value ?? '',
       trigger_job_type_strings: plan.trigger_job_type_strings ?? [],
+      require_no_attached_rbl_file: plan.require_no_attached_rbl_file ?? false,
       message_template: plan.message_template,
     })
     setJobTypeInput('')
@@ -216,6 +229,7 @@ export default function PlanClient({ initialPlans, companyId }: Props) {
         form.trigger_job_type_strings.length > 0
           ? form.trigger_job_type_strings
           : null,
+      require_no_attached_rbl_file: form.require_no_attached_rbl_file,
       message_template: form.message_template.trim(),
     }
 
@@ -412,6 +426,31 @@ export default function PlanClient({ initialPlans, companyId }: Props) {
               </p>
             </div>
 
+            <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.require_no_attached_rbl_file}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      require_no_attached_rbl_file: e.target.checked,
+                    }))
+                  }
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span>
+                  <span className="block text-sm font-medium text-gray-700">
+                    No attached RBL file
+                  </span>
+                  <span className="mt-1 block text-xs text-gray-500">
+                    Only send if there is no other imported row for this customer whose
+                    Name contains &quot;RBL&quot; and shares the same first 8 characters.
+                  </span>
+                </span>
+              </label>
+            </div>
+
             {/* Message Template */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -485,9 +524,9 @@ export default function PlanClient({ initialPlans, companyId }: Props) {
                 <tr key={plan.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-3 text-sm text-gray-900 max-w-xs">
                     <span>{formatTrigger(plan)}</span>
-                    {formatJobTypeFilter(plan) && (
+                    {formatPlanFilters(plan) && (
                       <span className="ml-1 text-xs text-blue-600 font-medium">
-                        {formatJobTypeFilter(plan)}
+                        {formatPlanFilters(plan)}
                       </span>
                     )}
                   </td>
