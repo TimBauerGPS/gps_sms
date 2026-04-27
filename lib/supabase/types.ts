@@ -489,6 +489,21 @@ export interface Database {
         }
         Relationships: []
       }
+      super_admins: {
+        Row: {
+          user_id: string
+          created_at: string | null
+        }
+        Insert: {
+          user_id: string
+          created_at?: string | null
+        }
+        Update: {
+          user_id?: string
+          created_at?: string | null
+        }
+        Relationships: []
+      }
       send_queue: {
         Row: {
           id: string

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAppName, getAppSlug, getCanonicalAppUrl, getInviteConfirmUrl } from '@/lib/appAuth'
+import { findAuthUserByEmail, getGuardianAdminContext } from '@/lib/adminAccess'
 
 async function sendEmail(to: string, subject: string, html: string) {
   const key = process.env.RESEND_API_KEY
@@ -14,35 +14,10 @@ async function sendEmail(to: string, subject: string, html: string) {
   })
 }
 
-async function findAuthUserByEmail(admin: ReturnType<typeof createAdminClient>, email: string) {
-  let page = 1
-
-  while (true) {
-    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 })
-    if (error) throw error
-
-    const matchingUser = data.users.find((user) => user.email?.toLowerCase() === email.toLowerCase())
-    if (matchingUser) return matchingUser
-
-    if (!data.nextPage) return null
-    page = data.nextPage
-  }
-}
-
 export async function POST(req: NextRequest) {
-  // Auth — must be admin
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: userRow } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-  if (userRow?.role !== 'admin') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  const context = await getGuardianAdminContext()
+  if (!context) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!context.isSuperAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { requestId, companyId, companyName } = await req.json()
   if (!requestId) return NextResponse.json({ error: 'requestId required' }, { status: 400 })
@@ -137,9 +112,14 @@ export async function POST(req: NextRequest) {
   }
 
   // Grant app access explicitly (don't rely on trigger)
-  await admin
+  const { error: accessErr } = await admin
     .from('user_app_access')
     .upsert({ user_id: authUserId, app_name: appSlug, role: 'member' }, { onConflict: 'user_id,app_name' })
+
+  if (accessErr) {
+    console.error('[approve-signup] app access upsert error:', accessErr)
+    return NextResponse.json({ error: 'Failed to grant app access' }, { status: 500 })
+  }
 
   // Create public.users row (upsert so re-approving the same user doesn't fail)
   const { error: usersErr } = await admin.from('users').upsert({
@@ -151,13 +131,19 @@ export async function POST(req: NextRequest) {
 
   if (usersErr) {
     console.error('[approve-signup] users upsert error:', usersErr)
+    return NextResponse.json({ error: 'Failed to create Guardian SMS user record' }, { status: 500 })
   }
 
   // Mark request as approved
-  await admin
+  const { error: requestUpdateErr } = await admin
     .from('signup_requests')
     .update({ status: 'approved', company_id: resolvedCompanyId })
     .eq('id', requestId)
+
+  if (requestUpdateErr) {
+    console.error('[approve-signup] request update error:', requestUpdateErr)
+    return NextResponse.json({ error: 'User was created, but request status could not be updated' }, { status: 500 })
+  }
 
   if (existingUser) {
     await sendEmail(

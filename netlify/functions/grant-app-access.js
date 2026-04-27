@@ -14,6 +14,13 @@ export const handler = async (event) => {
     return { statusCode: 405, body: JSON.stringify({ error: 'Method not allowed' }) }
   }
 
+  const secret = process.env.GRANT_APP_ACCESS_SECRET || process.env.INTERNAL_CRON_SECRET
+  const providedSecret = event.headers['x-grant-app-access-secret'] || event.headers['X-Grant-App-Access-Secret']
+
+  if (!secret || providedSecret !== secret) {
+    return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized' }) }
+  }
+
   let body
   try {
     body = JSON.parse(event.body ?? '{}')

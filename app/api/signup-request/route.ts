@@ -1,17 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { listSuperAdminEmails } from '@/lib/adminAccess'
 
-async function sendEmail(to: string, subject: string, html: string) {
+async function sendEmail(to: string[], subject: string, html: string) {
   const key = process.env.RESEND_API_KEY
   if (!key) {
     console.warn('[signup-request] RESEND_API_KEY not set — skipping email')
+    return
+  }
+  if (to.length === 0) {
+    console.warn('[signup-request] No superuser email configured — skipping email')
     return
   }
   const from = process.env.RESEND_FROM_EMAIL ?? 'Allied SMS <onboarding@resend.dev>'
   await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from, to: [to], subject, html }),
+    body: JSON.stringify({ from, to, subject, html }),
   })
 }
 
@@ -53,8 +58,9 @@ export async function POST(req: NextRequest) {
 
   // Notify admin
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+  const superAdminEmails = await listSuperAdminEmails(admin)
   await sendEmail(
-    'tbauer@alliedrestoration.com',
+    superAdminEmails,
     `New signup request from ${name}`,
     `
       <p><strong>${name}</strong> (${email}) has requested access to Allied SMS.</p>

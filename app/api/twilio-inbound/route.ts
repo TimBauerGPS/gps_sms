@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import twilio from 'twilio'
 import {
   extractInboundMediaFromParams,
   syncInboundTwilioMessage,
@@ -18,6 +19,49 @@ function resolveAppUrl(request: NextRequest): string {
   }
 
   return new URL(request.url).origin
+}
+
+function toTwilioParamsObject(params: URLSearchParams): Record<string, string> {
+  const result: Record<string, string> = {}
+  params.forEach((value, key) => {
+    result[key] = value
+  })
+  return result
+}
+
+function candidateWebhookUrls(request: NextRequest, appUrl: string): string[] {
+  const requestUrl = new URL(request.url)
+  const configuredUrl = process.env.TWILIO_INBOUND_WEBHOOK_URL
+  const appBaseUrl = appUrl.replace(/\/+$/, '')
+  const appWebhookUrl = `${appBaseUrl}${requestUrl.pathname}${requestUrl.search}`
+
+  return Array.from(
+    new Set([
+      configuredUrl,
+      appWebhookUrl,
+      requestUrl.toString(),
+    ].filter((url): url is string => Boolean(url)))
+  )
+}
+
+function isValidTwilioRequest({
+  appUrl,
+  authToken,
+  params,
+  request,
+}: {
+  appUrl: string
+  authToken: string | null
+  params: URLSearchParams
+  request: NextRequest
+}) {
+  const signature = request.headers.get('x-twilio-signature')
+  if (!authToken || !signature) return false
+
+  const paramsObject = toTwilioParamsObject(params)
+  return candidateWebhookUrls(request, appUrl).some((url) =>
+    twilio.validateRequest(authToken, signature, url, paramsObject)
+  )
 }
 
 async function notifyStaff({ company, job, From, Body, appUrl }: {
@@ -110,6 +154,16 @@ export async function POST(req: NextRequest) {
     if (companyErr || !company) {
       console.warn('[twilio-inbound] Unknown Twilio number:', To, companyErr?.message)
       return twimlResponse()
+    }
+
+    if (!isValidTwilioRequest({
+      appUrl,
+      authToken: company.twilio_auth_token,
+      params,
+      request: req,
+    })) {
+      console.warn('[twilio-inbound] Invalid Twilio signature for number:', To)
+      return new NextResponse('Forbidden', { status: 403 })
     }
 
     // STOP / UNSUBSCRIBE handling

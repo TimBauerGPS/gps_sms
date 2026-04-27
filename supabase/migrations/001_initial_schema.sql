@@ -157,8 +157,8 @@ CREATE POLICY "companies: company members only"
   ON public.companies FOR ALL
   USING (id = get_user_company_id());
 
-CREATE POLICY "users: company members only"
-  ON public.users FOR ALL
+CREATE POLICY "users: company members read company users"
+  ON public.users FOR SELECT
   USING (company_id = get_user_company_id());
 
 CREATE POLICY "message_plans: company members only"

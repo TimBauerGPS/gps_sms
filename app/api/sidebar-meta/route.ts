@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getGuardianAdminContext } from '@/lib/adminAccess'
 
 export async function GET() {
   const supabase = await createClient()
@@ -12,18 +13,21 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  const context = await getGuardianAdminContext()
+  const isSuperAdmin = Boolean(context?.isSuperAdmin)
+
   const { data: userRow } = await supabase
     .from('users')
     .select('company_id, role')
     .eq('id', user.id)
     .single()
 
-  if (!userRow) {
-    return NextResponse.json({ companyName: null, isAdmin: false, pendingSignups: 0 })
+  if (!userRow && !isSuperAdmin) {
+    return NextResponse.json({ companyName: null, isAdmin: false, isSuperAdmin: false, pendingSignups: 0 })
   }
 
   let companyName: string | null = null
-  if (userRow.company_id) {
+  if (userRow?.company_id) {
     const { data: company } = await supabase
       .from('companies')
       .select('name')
@@ -32,10 +36,10 @@ export async function GET() {
     companyName = company?.name ?? null
   }
 
-  const isAdmin = userRow.role === 'admin'
+  const isAdmin = userRow?.role === 'admin' || isSuperAdmin
   let pendingSignups = 0
 
-  if (isAdmin) {
+  if (isSuperAdmin) {
     const admin = createAdminClient()
     const { count } = await admin
       .from('signup_requests')
@@ -44,5 +48,5 @@ export async function GET() {
     pendingSignups = count ?? 0
   }
 
-  return NextResponse.json({ companyName, isAdmin, pendingSignups })
+  return NextResponse.json({ companyName, isAdmin, isSuperAdmin, pendingSignups })
 }

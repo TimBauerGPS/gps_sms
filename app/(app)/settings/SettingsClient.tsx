@@ -11,11 +11,6 @@ interface ReviewLink {
   url: string
 }
 
-interface JobType {
-  label: string
-  substring: string
-}
-
 // ─── Toast helper ────────────────────────────────────────────────────────────
 
 type ToastState = 'idle' | 'saving' | 'success' | 'error'
@@ -113,31 +108,6 @@ function parseReviewLinks(raw: unknown): ReviewLink[] {
     }
     return { match_string: '', url: '' }
   })
-}
-
-function parseJobTypes(raw: unknown): JobType[] {
-  if (!Array.isArray(raw)) return []
-  return (raw as unknown[]).map((item) => {
-    if (typeof item === 'object' && item !== null) {
-      const r = item as Record<string, unknown>
-      return {
-        label: typeof r.label === 'string' ? r.label : '',
-        substring: typeof r.substring === 'string' ? r.substring : '',
-      }
-    }
-    return { label: '', substring: '' }
-  })
-}
-
-function resolveReviewLink(links: ReviewLink[], jobName: string): string {
-  const lower = jobName.toLowerCase()
-  for (const link of links) {
-    if (link.match_string && lower.includes(link.match_string.toLowerCase())) {
-      return link.url || '(no URL set)'
-    }
-  }
-  const fallback = links.find((l) => !l.match_string)
-  return fallback?.url || '(no match found)'
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -299,36 +269,6 @@ export default function SettingsClient({ company }: Props) {
       .update({ auto_send_enabled: value })
       .eq('id', company.id)
     sendModeToast.show(error ? 'error' : 'success', error?.message)
-  }
-
-  // ── Job types ─────────────────────────────────────────────────────────────
-  const [jobTypes, setJobTypes] = useState<JobType[]>(parseJobTypes(company.job_types))
-  const [jobTypesOpen, setJobTypesOpen] = useState(false)
-  const [newJobCode, setNewJobCode] = useState('')
-  const jobTypesToast = useToast()
-
-  async function saveJobTypes(updated: JobType[]) {
-    jobTypesToast.show('saving')
-    const { error } = await supabase
-      .from('companies')
-      .update({ job_types: updated as unknown as Json })
-      .eq('id', company.id)
-    jobTypesToast.show(error ? 'error' : 'success', error?.message)
-  }
-
-  function addJobType() {
-    const code = newJobCode.trim().toUpperCase()
-    if (!code || jobTypes.some((jt) => jt.substring.toUpperCase() === code)) return
-    const updated = [...jobTypes, { label: code, substring: code }]
-    setJobTypes(updated)
-    setNewJobCode('')
-    saveJobTypes(updated)
-  }
-
-  function removeJobType(index: number) {
-    const updated = jobTypes.filter((_, i) => i !== index)
-    setJobTypes(updated)
-    saveJobTypes(updated)
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -657,76 +597,6 @@ export default function SettingsClient({ company }: Props) {
           Recommended: keep manual review on until you&apos;ve verified your message templates are correct.
         </HelperText>
       </Section>
-
-      {/* Job Types */}
-      <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-        <button
-          type="button"
-          onClick={() => setJobTypesOpen((v) => !v)}
-          className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-slate-50 transition-colors"
-        >
-          <div className="flex items-center gap-3">
-            <h2 className="text-base font-semibold text-slate-800">Job Types</h2>
-            <span className="text-xs font-medium bg-slate-100 text-slate-600 rounded-full px-2 py-0.5">
-              {jobTypes.length}
-            </span>
-          </div>
-          <svg
-            className={`w-4 h-4 text-slate-400 transition-transform ${jobTypesOpen ? 'rotate-180' : ''}`}
-            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-
-        {jobTypesOpen && (
-          <div className="px-6 pb-6 space-y-4 border-t border-slate-100">
-            {/* Chips */}
-            {jobTypes.length > 0 && (
-              <div className="flex flex-wrap gap-2 pt-4">
-                {jobTypes.map((jt, i) => (
-                  <span
-                    key={i}
-                    className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 text-sm font-medium rounded-full px-3 py-1"
-                  >
-                    {jt.substring || jt.label}
-                    <button
-                      onClick={() => removeJobType(i)}
-                      className="text-slate-400 hover:text-red-500 leading-none ml-0.5 transition-colors"
-                      aria-label={`Remove ${jt.substring}`}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {/* Add input */}
-            <div className="flex gap-2">
-              <Input
-                value={newJobCode}
-                onChange={(e) => setNewJobCode(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && addJobType()}
-                placeholder="e.g. WTR"
-                className="w-36"
-              />
-              <button
-                onClick={addJobType}
-                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors whitespace-nowrap"
-              >
-                Add
-              </button>
-              <Toast state={jobTypesToast.state} message={jobTypesToast.message} />
-            </div>
-
-            <HelperText>
-              Job type codes from job names (e.g. &ldquo;WTR&rdquo;, &ldquo;RBL&rdquo;). Auto-filled
-              on CSV import. Used to filter which jobs receive certain messages.
-            </HelperText>
-          </div>
-        )}
-      </section>
 
     </div>
   )

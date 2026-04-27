@@ -121,7 +121,7 @@ export default function Sidebar({ userEmail }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const [companyName, setCompanyName] = useState<string | null>(null)
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [pendingSignups, setPendingSignups] = useState(0)
 
   useEffect(() => {
@@ -139,7 +139,7 @@ export default function Sidebar({ userEmail }: SidebarProps) {
         const json = await res.json()
         if (cancelled) return
         setCompanyName(json.companyName ?? null)
-        setIsAdmin(Boolean(json.isAdmin))
+        setIsSuperAdmin(Boolean(json.isSuperAdmin))
         setPendingSignups(json.pendingSignups ?? 0)
       } catch (error) {
         console.warn('[sidebar] Failed to load sidebar meta:', error)
@@ -190,7 +190,7 @@ export default function Sidebar({ userEmail }: SidebarProps) {
           )
         })}
 
-        {isAdmin && (
+        {isSuperAdmin && (
           <>
             <div className="pt-3 pb-1 px-3">
               <p className="text-xs font-semibold uppercase tracking-widest text-slate-600">Admin</p>
@@ -199,7 +199,7 @@ export default function Sidebar({ userEmail }: SidebarProps) {
               href="/admin/signups"
               className={[
                 'flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                pathname.startsWith('/admin')
+                pathname.startsWith('/admin/signups')
                   ? 'bg-slate-700 text-white'
                   : 'text-slate-400 hover:bg-slate-800 hover:text-white',
               ].join(' ')}
@@ -215,6 +215,20 @@ export default function Sidebar({ userEmail }: SidebarProps) {
                   {pendingSignups}
                 </span>
               )}
+            </Link>
+            <Link
+              href="/admin/users"
+              className={[
+                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                pathname.startsWith('/admin/users')
+                  ? 'bg-slate-700 text-white'
+                  : 'text-slate-400 hover:bg-slate-800 hover:text-white',
+              ].join(' ')}
+            >
+              <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a3 3 0 11-6 0 3 3 0 016 0zM4 20a8 8 0 0116 0" />
+              </svg>
+              Users
             </Link>
           </>
         )}

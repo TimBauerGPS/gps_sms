@@ -1,20 +1,12 @@
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getGuardianAdminContext } from '@/lib/adminAccess'
 import { redirect } from 'next/navigation'
 import SignupsClient from './SignupsClient'
 
 export default async function AdminSignupsPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
-
-  const { data: userRow } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (userRow?.role !== 'admin') redirect('/upload')
+  const context = await getGuardianAdminContext()
+  if (!context) redirect('/login')
+  if (!context.isSuperAdmin) redirect('/upload')
 
   const admin = createAdminClient()
 

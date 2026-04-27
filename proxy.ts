@@ -52,6 +52,14 @@ export async function proxy(request: NextRequest) {
       .single()
 
     if (!access) {
+      const { data: superAdmin } = await supabase
+        .from('super_admins')
+        .select('user_id')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (superAdmin) return supabaseResponse
+
       const url = request.nextUrl.clone()
       url.pathname = '/no-access'
       return NextResponse.redirect(url)

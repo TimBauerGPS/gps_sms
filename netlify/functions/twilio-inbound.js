@@ -2,10 +2,36 @@
 // Twilio must be configured to POST to:
 //   https://<your-site>/.netlify/functions/twilio-inbound
 //
-// Security note: production deployments should validate the X-Twilio-Signature
-// header. See https://www.twilio.com/docs/usage/webhooks/webhooks-security
-
 import { createClient } from '@supabase/supabase-js'
+import twilio from 'twilio'
+
+function paramsToObject(params) {
+  const result = {}
+  params.forEach((value, key) => {
+    result[key] = value
+  })
+  return result
+}
+
+function candidateWebhookUrls(event) {
+  const rawUrl = event.rawUrl
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/+$/, '')
+  return Array.from(new Set([
+    process.env.TWILIO_NETLIFY_FUNCTION_WEBHOOK_URL,
+    rawUrl,
+    appUrl ? `${appUrl}/.netlify/functions/twilio-inbound` : null,
+  ].filter(Boolean)))
+}
+
+function isValidTwilioRequest(event, authToken, params) {
+  const signature = event.headers['x-twilio-signature'] || event.headers['X-Twilio-Signature']
+  if (!authToken || !signature) return false
+
+  const bodyParams = paramsToObject(params)
+  return candidateWebhookUrls(event).some((url) =>
+    twilio.validateRequest(authToken, signature, url, bodyParams)
+  )
+}
 
 export const handler = async (event) => {
   try {
@@ -41,6 +67,11 @@ export const handler = async (event) => {
     if (companyErr || !company) {
       console.warn('[twilio-inbound] Unknown Twilio number:', To, companyErr?.message)
       return twimlResponse() // Unknown number — ignore silently
+    }
+
+    if (!isValidTwilioRequest(event, company.twilio_auth_token, params)) {
+      console.warn('[twilio-inbound] Invalid Twilio signature for number:', To)
+      return { statusCode: 403, body: 'Forbidden' }
     }
 
     // 5. STOP / UNSUBSCRIBE handling
