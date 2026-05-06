@@ -2,6 +2,24 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl
+  const isPublic =
+    pathname.startsWith('/.netlify/functions/') ||
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/auth') ||
+    pathname.startsWith('/onboarding') ||
+    pathname === '/api/signup-request' ||
+    pathname === '/api/twilio-inbound' ||
+    pathname.startsWith('/api/check-twilio') ||
+    pathname === '/manifest.json' ||
+    pathname === '/api/no-access' ||
+    pathname === '/no-access' ||
+    pathname === '/api/internal/allied-sheet-sync'
+
+  if (isPublic) {
+    return NextResponse.next({ request })
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -23,27 +41,13 @@ export async function proxy(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  const { pathname } = request.nextUrl
-  const isPublic =
-    pathname.startsWith('/.netlify/functions/') ||
-    pathname.startsWith('/login') ||
-    pathname.startsWith('/auth') ||
-    pathname.startsWith('/onboarding') ||
-    pathname === '/api/signup-request' ||
-    pathname === '/api/twilio-inbound' ||
-    pathname.startsWith('/api/check-twilio') ||
-    pathname === '/manifest.json' ||
-    pathname === '/api/no-access' ||
-    pathname === '/no-access' ||
-    pathname === '/api/internal/allied-sheet-sync'
-
-  if (!user && !isPublic) {
+  if (!user) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }
 
-  if (user && !isPublic) {
+  if (user) {
     const { data: access } = await supabase
       .from('user_app_access')
       .select('role')

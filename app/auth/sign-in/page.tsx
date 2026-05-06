@@ -41,6 +41,11 @@ function isSupportedOtpType(type: string | null): type is EmailOtpType {
   return Boolean(type && SUPPORTED_OTP_TYPES.has(type as EmailOtpType))
 }
 
+function getSignInFailureMessage(error: unknown) {
+  if (error instanceof Error && error.message) return error.message
+  return 'That sign-in link could not be used. Return to login and send yourself a fresh link.'
+}
+
 function AuthSignInInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -62,15 +67,21 @@ function AuthSignInInner() {
     setError(null)
 
     const supabase = createAuthActionClient()
-    const result = code
-      ? await supabase.auth.exchangeCodeForSession(code)
-      : await supabase.auth.verifyOtp({
-          token_hash: tokenHash!,
-          type: type as EmailOtpType,
-        })
+    try {
+      const result = code
+        ? await supabase.auth.exchangeCodeForSession(code)
+        : await supabase.auth.verifyOtp({
+            token_hash: tokenHash!,
+            type: type as EmailOtpType,
+          })
 
-    if (result.error) {
-      setError(result.error.message || 'That sign-in link could not be used. Return to login and send yourself a fresh link.')
+      if (result.error) {
+        setError(getSignInFailureMessage(result.error))
+        setLoading(false)
+        return
+      }
+    } catch (err) {
+      setError(getSignInFailureMessage(err))
       setLoading(false)
       return
     }
