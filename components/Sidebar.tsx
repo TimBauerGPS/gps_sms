@@ -120,7 +120,6 @@ interface SidebarProps {
 export default function Sidebar({ userEmail }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
-  const [companyName, setCompanyName] = useState<string | null>(null)
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [pendingSignups, setPendingSignups] = useState(0)
 
@@ -138,7 +137,6 @@ export default function Sidebar({ userEmail }: SidebarProps) {
         if (!res.ok) return
         const json = await res.json()
         if (cancelled) return
-        setCompanyName(json.companyName ?? null)
         setIsSuperAdmin(Boolean(json.isSuperAdmin))
         setPendingSignups(json.pendingSignups ?? 0)
       } catch (error) {
@@ -163,7 +161,7 @@ export default function Sidebar({ userEmail }: SidebarProps) {
     <aside className="fixed left-0 top-0 h-screen w-64 bg-slate-900 hidden md:flex flex-col border-r border-slate-700 z-40">
       {/* Logo */}
       <div className="flex items-center h-16 px-5 border-b border-slate-700 shrink-0">
-        <span className="text-lg font-bold text-white tracking-tight">{companyName ?? 'Guardian SMS'}</span>
+        <span className="text-lg font-bold text-white tracking-tight">Albi SMS Generator</span>
       </div>
 
       {/* Nav */}

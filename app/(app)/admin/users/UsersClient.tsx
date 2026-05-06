@@ -23,17 +23,20 @@ interface Props {
 
 export default function UsersClient({ users: initialUsers, companies }: Props) {
   const [users, setUsers] = useState(initialUsers)
+  const [companyOptions, setCompanyOptions] = useState(companies)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteCompanyId, setInviteCompanyId] = useState(companies[0]?.id ?? '')
+  const [newCompanyName, setNewCompanyName] = useState('')
   const [inviteRole, setInviteRole] = useState<'admin' | 'member'>('member')
   const [savingUserId, setSavingUserId] = useState<string | null>(null)
   const [inviting, setInviting] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const isAddingCompany = inviteCompanyId === '__new__'
 
   const companyById = useMemo(() => {
-    return new Map(companies.map((company) => [company.id, company]))
-  }, [companies])
+    return new Map(companyOptions.map((company) => [company.id, company]))
+  }, [companyOptions])
 
   async function inviteUser() {
     setInviting(true)
@@ -44,7 +47,12 @@ export default function UsersClient({ users: initialUsers, companies }: Props) {
       const res = await fetch('/api/admin/invite-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: inviteEmail, companyId: inviteCompanyId, role: inviteRole }),
+        body: JSON.stringify({
+          email: inviteEmail,
+          companyId: isAddingCompany ? undefined : inviteCompanyId,
+          companyName: isAddingCompany ? newCompanyName : undefined,
+          role: inviteRole,
+        }),
       })
       const json = await res.json()
       if (!res.ok) {
@@ -52,13 +60,22 @@ export default function UsersClient({ users: initialUsers, companies }: Props) {
         return
       }
 
-      const company = companyById.get(inviteCompanyId)
+      const invitedCompany: Company | undefined = json.company
+      if (invitedCompany) {
+        setCompanyOptions((prev) => {
+          if (prev.some((company) => company.id === invitedCompany.id)) return prev
+          return [...prev, invitedCompany].sort((a, b) => a.name.localeCompare(b.name))
+        })
+      }
+
+      const company = invitedCompany ?? companyById.get(inviteCompanyId)
+      const companyId = company?.id ?? inviteCompanyId
       setUsers((prev) => {
         const existing = prev.find((user) => user.id === json.userId)
         const nextUser: AppUser = {
           id: json.userId,
           email: inviteEmail.trim().toLowerCase(),
-          company_id: inviteCompanyId,
+          company_id: companyId,
           role: inviteRole,
           has_app_access: true,
           companies: company ? { name: company.name } : null,
@@ -70,6 +87,8 @@ export default function UsersClient({ users: initialUsers, companies }: Props) {
       })
 
       setInviteEmail('')
+      setNewCompanyName('')
+      if (isAddingCompany && company?.id) setInviteCompanyId(company.id)
       setMessage('Invite saved. New users receive an invite; existing shared-login users receive an access email.')
     } catch {
       setError('Network error')
@@ -127,7 +146,7 @@ export default function UsersClient({ users: initialUsers, companies }: Props) {
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px_140px_auto] md:items-end">
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_240px_180px_140px_auto] md:items-end">
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Email</label>
             <input
@@ -145,10 +164,22 @@ export default function UsersClient({ users: initialUsers, companies }: Props) {
               onChange={(event) => setInviteCompanyId(event.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              {companies.map((company) => (
+              {companyOptions.map((company) => (
                 <option key={company.id} value={company.id}>{company.name}</option>
               ))}
+              <option value="__new__">Add new company...</option>
             </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">New company</label>
+            <input
+              type="text"
+              value={newCompanyName}
+              onChange={(event) => setNewCompanyName(event.target.value)}
+              disabled={!isAddingCompany}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-400"
+              placeholder="Company name"
+            />
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Role</label>
@@ -163,7 +194,7 @@ export default function UsersClient({ users: initialUsers, companies }: Props) {
           </div>
           <button
             onClick={inviteUser}
-            disabled={inviting || !inviteEmail.trim() || !inviteCompanyId}
+            disabled={inviting || !inviteEmail.trim() || (isAddingCompany ? !newCompanyName.trim() : !inviteCompanyId)}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
           >
             {inviting ? 'Inviting...' : 'Invite'}
@@ -199,7 +230,7 @@ export default function UsersClient({ users: initialUsers, companies }: Props) {
                     className="w-full min-w-48 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
                   >
                     <option value="" disabled>Choose company</option>
-                    {companies.map((company) => (
+                    {companyOptions.map((company) => (
                       <option key={company.id} value={company.id}>{company.name}</option>
                     ))}
                   </select>

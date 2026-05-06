@@ -19,12 +19,15 @@ export async function POST(req: NextRequest) {
   if (!context) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (!context.isSuperAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { email, companyId, role = 'member' } = await req.json()
+  const { email, companyId, companyName, role = 'member' } = await req.json()
   const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : ''
   const requestedCompanyId = typeof companyId === 'string' ? companyId.trim() : ''
+  const requestedCompanyName = typeof companyName === 'string' ? companyName.trim() : ''
 
   if (!normalizedEmail) return NextResponse.json({ error: 'email required' }, { status: 400 })
-  if (!requestedCompanyId) return NextResponse.json({ error: 'companyId required' }, { status: 400 })
+  if (!requestedCompanyId && !requestedCompanyName) {
+    return NextResponse.json({ error: 'company required' }, { status: 400 })
+  }
   if (role !== 'admin' && role !== 'member') {
     return NextResponse.json({ error: 'role must be admin or member' }, { status: 400 })
   }
@@ -35,14 +38,45 @@ export async function POST(req: NextRequest) {
   const appUrl = getCanonicalAppUrl(new URL(req.url).origin)
   const inviteRedirectTo = getInviteConfirmUrl(new URL(req.url).origin)
 
-  const { data: company, error: companyError } = await admin
-    .from('companies')
-    .select('id, name')
-    .eq('id', requestedCompanyId)
-    .single()
+  let company: { id: string; name: string } | null = null
+  let companyError: { message?: string } | null = null
+
+  if (requestedCompanyId) {
+    const result = await admin
+      .from('companies')
+      .select('id, name')
+      .eq('id', requestedCompanyId)
+      .single()
+    company = result.data
+    companyError = result.error
+  } else {
+    const existing = await admin
+      .from('companies')
+      .select('id, name')
+      .ilike('name', requestedCompanyName)
+      .limit(1)
+      .maybeSingle()
+
+    if (existing.error) {
+      companyError = existing.error
+    } else if (existing.data) {
+      company = existing.data
+    } else {
+      const created = await admin
+        .from('companies')
+        .insert({ name: requestedCompanyName })
+        .select('id, name')
+        .single()
+      company = created.data
+      companyError = created.error
+    }
+  }
 
   if (companyError || !company) {
-    return NextResponse.json({ error: 'Company not found' }, { status: 404 })
+    return NextResponse.json(
+      { error: companyError?.message ?? 'Company not found' },
+      { status: requestedCompanyId ? 404 : 500 }
+    )
   }
 
   const existingUser = await findAuthUserByEmail(admin, normalizedEmail)
@@ -102,5 +136,5 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  return NextResponse.json({ ok: true, userId: authUserId })
+  return NextResponse.json({ ok: true, userId: authUserId, company })
 }
