@@ -1,52 +1,72 @@
-import { createServerClient } from '@supabase/ssr'
 import { NextRequest, NextResponse } from 'next/server'
-import { getCanonicalAppUrl, getPostAuthRedirectUrl } from '@/lib/appAuth'
-import type { Database } from '@/lib/supabase/types'
+import { getCanonicalAppUrl } from '@/lib/appAuth'
 
-type SupportedOtpType = 'email' | 'invite' | 'magiclink' | 'recovery'
+function getSafeNextPath(value: string | null) {
+  if (!value?.startsWith('/')) return null
+  if (value.startsWith('//')) return null
+  return value
+}
+
+function redirectToLoginWithAuthError(options: {
+  appUrl: string
+  code?: string | null
+  description?: string | null
+  next?: string | null
+}) {
+  const loginUrl = new URL('/login', options.appUrl)
+  const next = getSafeNextPath(options.next ?? null)
+
+  loginUrl.searchParams.set('auth_error', options.code ?? 'auth_callback_failed')
+  if (options.description) {
+    loginUrl.searchParams.set('auth_error_description', options.description)
+  }
+  if (next) {
+    loginUrl.searchParams.set('next', next)
+  }
+
+  return NextResponse.redirect(loginUrl)
+}
+
+function redirectToAuthAction(requestUrl: URL, appUrl: string) {
+  const authActionUrl = new URL('/auth/sign-in', appUrl)
+  const paramsToForward = ['code', 'token_hash', 'type', 'next', 'redirect_to']
+
+  for (const name of paramsToForward) {
+    const value = requestUrl.searchParams.get(name)
+    if (value) authActionUrl.searchParams.set(name, value)
+  }
+
+  return NextResponse.redirect(authActionUrl)
+}
 
 export async function completeAuthRedirect(request: NextRequest) {
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get('code')
   const tokenHash = requestUrl.searchParams.get('token_hash')
-  const type = requestUrl.searchParams.get('type') as SupportedOtpType | null
+  const type = requestUrl.searchParams.get('type')
+  const next = requestUrl.searchParams.get('next')
+  const providerError = requestUrl.searchParams.get('error')
+  const providerErrorCode = requestUrl.searchParams.get('error_code')
+  const providerErrorDescription = requestUrl.searchParams.get('error_description')
   const appUrl = getCanonicalAppUrl(requestUrl.origin)
-  const redirectUrl = getPostAuthRedirectUrl({
-    fallbackOrigin: requestUrl.origin,
-    next: requestUrl.searchParams.get('next'),
-    redirectTo: requestUrl.searchParams.get('redirect_to'),
-  })
 
-  const redirectResponse = NextResponse.redirect(redirectUrl)
-
-  const supabase = createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            redirectResponse.cookies.set(name, value, options)
-          })
-        },
-      },
-    }
-  )
-
-  if (code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
-    if (error) {
-      return NextResponse.redirect(`${appUrl}/login`)
-    }
-  } else if (tokenHash && type) {
-    const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type })
-    if (error) {
-      return NextResponse.redirect(`${appUrl}/login`)
-    }
+  if (providerError || providerErrorCode || providerErrorDescription) {
+    return redirectToLoginWithAuthError({
+      appUrl,
+      code: providerErrorCode ?? providerError,
+      description: providerErrorDescription,
+      next,
+    })
   }
 
-  return redirectResponse
+  if (code || (tokenHash && type)) {
+    return redirectToAuthAction(requestUrl, appUrl)
+  }
+
+  return redirectToLoginWithAuthError({
+    appUrl,
+    code: 'missing_auth_token',
+    description: 'Login link is missing its verification token.',
+    next,
+  })
 }

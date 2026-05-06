@@ -7,14 +7,73 @@ import { createClient } from '@/lib/supabase/client'
 
 type Tab = 'login' | 'request'
 
+type AuthErrorParams = {
+  get(name: string): string | null
+}
+
+function getAuthErrorMessage(params: AuthErrorParams) {
+  const code = params.get('auth_error') ?? params.get('error_code')
+  const description = params.get('auth_error_description') ?? params.get('error_description')
+  const error = params.get('error')
+
+  if (!code && !description && !error) return null
+
+  if (code === 'otp_expired') {
+    return 'That login link has expired or was already used. Enter your email and send yourself a fresh link.'
+  }
+
+  if (code === 'missing_auth_token') {
+    return 'That login link is missing its verification token. Enter your email and send yourself a fresh link.'
+  }
+
+  return description?.replace(/\+/g, ' ') ?? 'We could not complete that sign-in. Please send yourself a fresh login link.'
+}
+
+function getHashAuthErrorMessage() {
+  if (typeof window === 'undefined' || !window.location.hash) return null
+  return getAuthErrorMessage(new URLSearchParams(window.location.hash.slice(1)))
+}
+
+function buildAuthSignInUrl(appUrl: string, nextPath: string) {
+  const callbackUrl = new URL('/auth/sign-in', appUrl)
+  if (nextPath && nextPath !== '/upload') {
+    callbackUrl.searchParams.set('next', nextPath)
+  }
+  return callbackUrl.toString()
+}
+
+function buildAuthSignInPath(params: URLSearchParams) {
+  const authUrl = new URL('/auth/sign-in', window.location.origin)
+  const paramsToForward = ['code', 'token_hash', 'type', 'next', 'redirect_to']
+
+  for (const name of paramsToForward) {
+    const value = params.get(name)
+    if (value) authUrl.searchParams.set(name, value)
+  }
+
+  return `${authUrl.pathname}${authUrl.search}`
+}
+
 function LoginInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [tab, setTab] = useState<Tab>('login')
   const [exchanging, setExchanging] = useState(false)
   const nextPath = searchParams.get('next') ?? '/upload'
+  const hasAuthTokenParams = Boolean(searchParams.get('code') || searchParams.get('token_hash'))
+  const [email, setEmail] = useState('')
+  const [loginError, setLoginError] = useState<string | null>(() => getAuthErrorMessage(searchParams))
+  const [loginLoading, setLoginLoading] = useState(false)
+  const [magicSent, setMagicSent] = useState(false)
 
   useEffect(() => {
+    const message = getAuthErrorMessage(searchParams) ?? getHashAuthErrorMessage()
+    if (message) setLoginError(message)
+  }, [searchParams])
+
+  useEffect(() => {
+    if (hasAuthTokenParams) return
+
     const supabase = createClient()
 
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -34,30 +93,17 @@ function LoginInner() {
     return () => {
       subscription.unsubscribe()
     }
-  }, [nextPath, router])
+  }, [hasAuthTokenParams, nextPath, router])
 
-  // If we landed here with ?code=XXX, exchange it client-side
+  // If a legacy auth link lands here, move it to the confirmation step without consuming it.
   useEffect(() => {
-    const code = searchParams.get('code')
-    if (!code) return
+    if (!hasAuthTokenParams) return
+
     setExchanging(true)
-    const supabase = createClient()
-    supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
-      if (!error) {
-        router.replace(nextPath)
-      } else {
-        console.error('Code exchange failed:', error.message)
-        setExchanging(false)
-      }
-    })
-  }, [nextPath, router, searchParams])
+    router.replace(buildAuthSignInPath(new URLSearchParams(searchParams.toString())))
+  }, [hasAuthTokenParams, router, searchParams])
 
   // ── Magic link state ──────────────────────────────────────────────────────
-  const [email, setEmail] = useState('')
-  const [loginError, setLoginError] = useState<string | null>(null)
-  const [loginLoading, setLoginLoading] = useState(false)
-  const [magicSent, setMagicSent] = useState(false)
-
   async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setLoginError(null)
@@ -68,7 +114,7 @@ function LoginInner() {
       email,
       options: {
         shouldCreateUser: false,
-        emailRedirectTo: `${appUrl}/auth/callback`,
+        emailRedirectTo: buildAuthSignInUrl(appUrl, nextPath),
       },
     })
     if (error) { setLoginError(error.message); setLoginLoading(false); return }

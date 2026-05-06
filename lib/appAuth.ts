@@ -8,6 +8,7 @@ function normalizeUrl(value?: string | null): string | null {
 
   try {
     const url = new URL(value)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
     url.search = ''
     url.hash = ''
     url.pathname = url.pathname.replace(/\/+$/, '')
@@ -65,7 +66,7 @@ export function getDefaultPostAuthPath() {
 
 export function getInviteConfirmUrl(fallbackOrigin?: string) {
   const appUrl = getCanonicalAppUrl(fallbackOrigin)
-  return `${appUrl}/auth/confirm?redirect_to=${encodeURIComponent(appUrl)}`
+  return `${appUrl}/auth/sign-in?redirect_to=${encodeURIComponent(appUrl)}`
 }
 
 export function getPostAuthRedirectUrl(options: {
