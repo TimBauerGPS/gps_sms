@@ -36,9 +36,7 @@ function getHashAuthErrorMessage() {
 
 function buildAuthSignInUrl(appUrl: string, nextPath: string) {
   const callbackUrl = new URL('/auth/sign-in', appUrl)
-  if (nextPath && nextPath !== '/upload') {
-    callbackUrl.searchParams.set('next', nextPath)
-  }
+  callbackUrl.searchParams.set('next', nextPath || '/upload')
   return callbackUrl.toString()
 }
 
