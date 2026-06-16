@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { shouldBlockForLostStatus } from '@/lib/messages/lostStatusGuard.js'
 import twilio from 'twilio'
 
 export async function POST(request: NextRequest) {
@@ -84,6 +85,42 @@ export async function POST(request: NextRequest) {
     }
 
     const customerPhone = conversation.customer_phone
+    let conversationJob: { albi_job_id: string | null; status: string | null } | null = null
+
+    if (conversation.job_id) {
+      const { data: jobRow } = await admin
+        .from('jobs')
+        .select('albi_job_id, status')
+        .eq('id', conversation.job_id)
+        .eq('company_id', companyId)
+        .maybeSingle()
+
+      conversationJob = jobRow ?? null
+    }
+
+    const { data: relatedJobs } = await admin
+      .from('jobs')
+      .select('status')
+      .eq('company_id', companyId)
+      .eq('customer_phone', customerPhone)
+
+    const lostStatusCheck = shouldBlockForLostStatus({
+      relatedJobs,
+      sendContext: {
+        jobStatus: conversationJob?.status,
+        allowLostJobDirectSend: Boolean(conversationJob),
+      },
+    })
+
+    if (lostStatusCheck.blocked) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'This customer has a Lost job status. Only Lost-status messages can be sent.',
+        },
+        { status: 422 }
+      )
+    }
 
     // ── 5. Check do_not_text ─────────────────────────────────────────────────
     const { data: dntRow } = await admin
@@ -143,14 +180,7 @@ export async function POST(request: NextRequest) {
     const fromEmail = process.env.RESEND_FROM_EMAIL || 'Guardian SMS <noreply@guardiansms.app>'
     if (company.albi_email && resendKey) {
       let jobLabel = customerPhone
-      if (conversation.job_id) {
-        const { data: jobRow } = await admin
-          .from('jobs')
-          .select('albi_job_id')
-          .eq('id', conversation.job_id)
-          .single()
-        if (jobRow?.albi_job_id) jobLabel = jobRow.albi_job_id
-      }
+      if (conversationJob?.albi_job_id) jobLabel = conversationJob.albi_job_id
       try {
         await fetch('https://api.resend.com/emails', {
           method: 'POST',

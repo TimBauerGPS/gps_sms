@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { shouldBlockForLostStatus } from '@/lib/messages/lostStatusGuard.js'
 import { resolvePlaceholders } from '@/lib/resolvePlaceholders'
 import type { Json } from '@/lib/supabase/types'
 
@@ -102,29 +103,20 @@ export async function POST(req: NextRequest) {
 
     const toPhone = phone.trim()
 
-    // Check do-not-text
-    const { data: dntRow } = await supabase
-      .from('do_not_text')
-      .select('id')
-      .eq('company_id', company_id)
-      .eq('phone_number', toPhone)
-      .maybeSingle()
-
-    if (dntRow) {
-      return NextResponse.json(
-        { error: 'This phone number is on the Do Not Text list.' },
-        { status: 403 }
-      )
-    }
-
     // Resolve placeholders if job_id provided
     let resolvedMessage = message.trim()
-    let jobRecord: { id: string; albi_job_id: string; raw_csv_row: Json } | null = null
+    let jobRecord: {
+      id: string
+      albi_job_id: string
+      customer_phone: string | null
+      raw_csv_row: Json
+      status: string | null
+    } | null = null
 
     if (job_id) {
       const { data: job } = await supabase
         .from('jobs')
-        .select('id, albi_job_id, raw_csv_row')
+        .select('id, albi_job_id, customer_phone, raw_csv_row, status')
         .eq('id', job_id)
         .eq('company_id', company_id)
         .single()
@@ -146,6 +138,42 @@ export async function POST(req: NextRequest) {
           companyName
         )
       }
+    }
+
+    // Check do-not-text
+    const { data: dntRow } = await supabase
+      .from('do_not_text')
+      .select('id')
+      .eq('company_id', company_id)
+      .eq('phone_number', toPhone)
+      .maybeSingle()
+
+    if (dntRow) {
+      return NextResponse.json(
+        { error: 'This phone number is on the Do Not Text list.' },
+        { status: 403 }
+      )
+    }
+
+    const { data: relatedJobs } = await supabase
+      .from('jobs')
+      .select('status')
+      .eq('company_id', company_id)
+      .eq('customer_phone', toPhone)
+
+    const lostStatusCheck = shouldBlockForLostStatus({
+      relatedJobs,
+      sendContext: {
+        jobStatus: jobRecord?.status,
+        allowLostJobDirectSend: Boolean(jobRecord && jobRecord.customer_phone === toPhone),
+      },
+    })
+
+    if (lostStatusCheck.blocked) {
+      return NextResponse.json(
+        { error: 'This customer has a Lost job status. Only Lost-status messages can be sent.' },
+        { status: 403 }
+      )
     }
 
     // Send via Twilio

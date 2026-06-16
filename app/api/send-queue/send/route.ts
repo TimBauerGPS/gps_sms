@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildRepliedMessageSet, hasRepliedToMessage } from '@/lib/replyDedup'
+import { LOST_STATUS_SKIP_REASON, shouldBlockForLostStatus } from '@/lib/messages/lostStatusGuard.js'
 
 export async function POST(req: NextRequest) {
   try {
@@ -64,7 +65,7 @@ export async function POST(req: NextRequest) {
     // ── Fetch send_queue rows (verify company ownership) ────────────────────
     const { data: queueRows } = await admin
       .from('send_queue')
-      .select('*, job:jobs ( customer_phone, id, albi_job_id )')
+      .select('*, job:jobs ( customer_phone, id, albi_job_id, status ), plan:message_plans ( trigger_status_value )')
       .in('id', ids)
       .eq('company_id', companyId)
       .eq('status', 'pending')
@@ -100,12 +101,71 @@ export async function POST(req: NextRequest) {
       .eq('company_id', companyId)
     const repliedMessages = buildRepliedMessageSet(messageHistoryRows ?? [])
 
+    const queuedPhones = Array.from(
+      new Set(
+        queueRows
+          .map((queueRow) => {
+            const job = Array.isArray(queueRow.job) ? queueRow.job[0] : queueRow.job
+            return job?.customer_phone
+          })
+          .filter(Boolean)
+      )
+    )
+
+    const { data: relatedJobRows } = queuedPhones.length
+      ? await admin
+          .from('jobs')
+          .select('customer_phone, status')
+          .eq('company_id', companyId)
+          .in('customer_phone', queuedPhones)
+      : { data: [] }
+
+    const relatedJobsByPhone = new Map<string, { status: string | null }[]>()
+    for (const relatedJob of relatedJobRows ?? []) {
+      if (!relatedJob.customer_phone) continue
+      const existing = relatedJobsByPhone.get(relatedJob.customer_phone)
+      if (existing) {
+        existing.push({ status: relatedJob.status })
+      } else {
+        relatedJobsByPhone.set(relatedJob.customer_phone, [{ status: relatedJob.status }])
+      }
+    }
+
     for (const queueRow of queueRows) {
-      const jobRow = queueRow.job as { customer_phone: string | null; id: string; albi_job_id: string } | null
+      const jobRow = (Array.isArray(queueRow.job) ? queueRow.job[0] : queueRow.job) as {
+        customer_phone: string | null
+        id: string
+        albi_job_id: string
+        status: string | null
+      } | null
+      const planRow = (Array.isArray(queueRow.plan) ? queueRow.plan[0] : queueRow.plan) as {
+        trigger_status_value: string | null
+      } | null
       const toPhone = jobRow?.customer_phone
 
       if (!toPhone) {
         errors.push(`Row ${queueRow.id}: no customer phone`)
+        continue
+      }
+
+      const lostStatusCheck = shouldBlockForLostStatus({
+        relatedJobs: relatedJobsByPhone.get(toPhone) ?? [],
+        sendContext: {
+          jobStatus: jobRow.status,
+          planTriggerStatusValue: planRow?.trigger_status_value,
+        },
+      })
+
+      if (lostStatusCheck.blocked) {
+        errors.push(`Row ${queueRow.id}: phone ${toPhone} has a Lost job status — skipped`)
+        await admin
+          .from('send_queue')
+          .update({
+            status: 'skipped',
+            skipped_reason: LOST_STATUS_SKIP_REASON,
+            processed_at: new Date().toISOString(),
+          })
+          .eq('id', queueRow.id)
         continue
       }
 
@@ -183,7 +243,7 @@ export async function POST(req: NextRequest) {
         }
 
         twilioSid = twilioJson.sid ?? null
-      } catch (fetchErr) {
+      } catch {
         errors.push(`Row ${queueRow.id}: network error sending to Twilio`)
         continue
       }

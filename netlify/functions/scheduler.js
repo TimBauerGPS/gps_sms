@@ -3,6 +3,10 @@
 // immediately (date_offset plans) or queues them for review (status_change plans).
 
 import { createClient } from '@supabase/supabase-js'
+import {
+  isLostStatus,
+  isLostStatusSpecificSend,
+} from '../../lib/messages/lostStatusGuard.js'
 
 // ---------------------------------------------------------------------------
 // Supabase admin client (bypasses RLS via service role key)
@@ -185,6 +189,24 @@ function isBeforeCutoff(job) {
   return job.created_at_albi < CUTOFF_DATE
 }
 
+async function getLostStatusPhoneSet(supabase, companyId) {
+  const { data: rows, error } = await supabase
+    .from('jobs')
+    .select('customer_phone, status')
+    .eq('company_id', companyId)
+
+  if (error) {
+    console.error(`[lost_status_guard] jobs fetch error (company=${companyId}):`, error)
+    return new Set()
+  }
+
+  return new Set(
+    (rows ?? [])
+      .filter((row) => row.customer_phone && isLostStatus(row.status))
+      .map((row) => row.customer_phone)
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Twilio SMS sender
 // ---------------------------------------------------------------------------
@@ -243,6 +265,7 @@ async function processDateOffsetPlan(supabase, company, plan) {
     .select('direction, body, to_phone, from_phone, sent_at')
     .eq('company_id', company.id)
   const repliedMessages = buildRepliedMessageSet(messageHistoryRows ?? [])
+  const lostStatusPhones = await getLostStatusPhoneSet(supabase, company.id)
 
   for (const job of jobs ?? []) {
     // Skip jobs predating the cutoff
@@ -270,6 +293,13 @@ async function processDateOffsetPlan(supabase, company, plan) {
 
     // Skip if on do-not-text list
     if (doNotTextSet.has(phone)) continue
+
+    if (
+      lostStatusPhones.has(phone) &&
+      !isLostStatusSpecificSend({ jobStatus: job.status })
+    ) {
+      continue
+    }
 
     // Skip if already sent for this (job_id, plan_id) combo
     const { data: alreadySent } = await supabase
@@ -370,6 +400,7 @@ async function processStatusChangePlan(supabase, company, plan) {
     .select('direction, body, to_phone, from_phone, sent_at')
     .eq('company_id', company.id)
   const repliedMessages = buildRepliedMessageSet(messageHistoryRows ?? [])
+  const lostStatusPhones = await getLostStatusPhoneSet(supabase, company.id)
 
   for (const job of jobs ?? []) {
     // Skip jobs predating the cutoff
@@ -401,6 +432,16 @@ async function processStatusChangePlan(supabase, company, plan) {
     // Skip if no phone
     const phone = job.customer_phone
     if (!phone) continue
+
+    if (
+      lostStatusPhones.has(phone) &&
+      !isLostStatusSpecificSend({
+        jobStatus: job.status,
+        planTriggerStatusValue: plan.trigger_status_value,
+      })
+    ) {
+      continue
+    }
 
     // Skip if any outbound message already sent to this phone today
     const todayStart = new Date()

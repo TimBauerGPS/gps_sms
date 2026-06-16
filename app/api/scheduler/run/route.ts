@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolvePlaceholders } from '@/lib/resolvePlaceholders'
 import { buildRepliedMessageSet, hasRepliedToMessage } from '@/lib/replyDedup'
+import { isLostStatus, isLostStatusSpecificSend } from '@/lib/messages/lostStatusGuard.js'
 import type { Json } from '@/lib/supabase/types'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -158,6 +159,11 @@ export async function POST() {
   const queuedSet = new Set((queueRes.data ?? []).map((r) => `${r.job_id}:${r.plan_id}`))
   const sentTodayPhones = new Set((sentTodayRes.data ?? []).map((r) => r.to_phone))
   const repliedMessages = buildRepliedMessageSet(historyRes.data ?? [])
+  const lostStatusPhones = new Set(
+    allJobs
+      .filter((job) => job.customer_phone && isLostStatus(job.status))
+      .map((job) => job.customer_phone)
+  )
 
   // ── Filtering pass (no DB queries) ────────────────────────────────────────
   type Candidate = { jobId: string; plan: typeof plans[number]; phone: string; autoSend: boolean }
@@ -192,6 +198,15 @@ export async function POST() {
       const phone = job.customer_phone
       if (!phone) continue
       if (doNotTextSet.has(phone)) continue
+      if (
+        lostStatusPhones.has(phone) &&
+        !isLostStatusSpecificSend({
+          jobStatus: job.status,
+          planTriggerStatusValue: plan.trigger_status_value,
+        })
+      ) {
+        continue
+      }
 
       const key = `${job.id}:${plan.id}`
       if (sentSet.has(key)) continue

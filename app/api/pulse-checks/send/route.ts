@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { shouldBlockForLostStatus } from '@/lib/messages/lostStatusGuard.js'
 import { resolvePlaceholders } from '@/lib/resolvePlaceholders'
 import type { Json } from '@/lib/supabase/types'
 
@@ -137,7 +138,7 @@ export async function POST(req: NextRequest) {
       const { data: job, error: jobErr } = await supabase
         .from('jobs')
         .select(
-          'id, albi_job_id, customer_name, customer_phone, raw_csv_row, company_id'
+          'id, albi_job_id, customer_name, customer_phone, raw_csv_row, company_id, status'
         )
         .eq('id', job_id)
         .eq('company_id', company_id)
@@ -150,6 +151,25 @@ export async function POST(req: NextRequest) {
 
       const phone = job.customer_phone
       if (!phone) {
+        skipped++
+        continue
+      }
+
+      const { data: relatedJobs } = await supabase
+        .from('jobs')
+        .select('status')
+        .eq('company_id', company_id)
+        .eq('customer_phone', phone)
+
+      const lostStatusCheck = shouldBlockForLostStatus({
+        relatedJobs,
+        sendContext: {
+          jobStatus: job.status,
+          targetStatuses: target_statuses ?? [],
+        },
+      })
+
+      if (lostStatusCheck.blocked) {
         skipped++
         continue
       }
