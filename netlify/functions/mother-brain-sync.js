@@ -31,7 +31,7 @@ export const handler = async () => {
     }
   }
 
-  const response = await fetch(`${appUrl}/api/internal/allied-sheet-sync`, {
+  const response = await fetch(`${appUrl}/api/internal/mother-brain-sync`, {
     method: 'POST',
     headers: {
       'x-internal-cron-secret': secret,

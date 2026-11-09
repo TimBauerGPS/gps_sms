@@ -2,7 +2,8 @@
 
 import { useRef, useState } from 'react'
 
-// Known Albi CSV column headers available as {{placeholders}}
+// Known Albi / Mother Brain column headers available as {{placeholders}}.
+// The extra Mother Brain columns resolve only if this app's API key allows them.
 const ALBI_HEADERS = [
   'Job Number',
   'Customer Name',
@@ -19,6 +20,18 @@ const ALBI_HEADERS = [
   'Work Start',
   'Paid',
   'Estimated Completion Date',
+  'Project Manager',
+  'Estimator',
+  'Sales Person',
+  'Dispatch/Coordinator',
+  'Customer Email',
+  'Address 1',
+  'City',
+  'State',
+  'Zip Code',
+  'Insurance Company',
+  'Referrer',
+  'Property Type',
 ]
 
 const SPECIAL_PLACEHOLDERS = [

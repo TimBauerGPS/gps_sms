@@ -8,7 +8,7 @@
 [functions]
   directory = "netlify/functions"
 
-[functions."allied-sheet-sync"]
+[functions."mother-brain-sync"]
   schedule = "0 * * * *"
 
 [[headers]]

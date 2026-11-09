@@ -15,18 +15,14 @@ const ALLIED_COMPANY_NAME = 'Allied Restoration Services'
 interface CompanyImportSettings {
   id: string
   name: string
-  google_sheet_url: string | null
   google_sheet_last_imported_at: string | null
 }
 
-interface GoogleSheetTestResult {
-  spreadsheetTitle: string
-  worksheetTitle: string
-  headerCount: number
-  headers: string[]
-  totalRows: number
+interface MotherBrainTestResult {
+  datasetVersionId: string | null
+  allowedColumns: string[]
+  missingColumns: string[]
   preview: PreviewRow[]
-  warningCount: number
 }
 
 export default function UploadPage() {
@@ -44,12 +40,11 @@ export default function UploadPage() {
   const [importError, setImportError] = useState<string | null>(null)
 
   const [company, setCompany] = useState<CompanyImportSettings | null>(null)
-  const [sheetUrl, setSheetUrl] = useState('')
-  const [testingSheet, setTestingSheet] = useState(false)
-  const [importingSheet, setImportingSheet] = useState(false)
-  const [sheetError, setSheetError] = useState<string | null>(null)
-  const [sheetSuccess, setSheetSuccess] = useState<string | null>(null)
-  const [sheetTestResult, setSheetTestResult] = useState<GoogleSheetTestResult | null>(null)
+  const [testingSource, setTestingSource] = useState(false)
+  const [importingSource, setImportingSource] = useState(false)
+  const [sourceError, setSourceError] = useState<string | null>(null)
+  const [sourceSuccess, setSourceSuccess] = useState<string | null>(null)
+  const [sourceTestResult, setSourceTestResult] = useState<MotherBrainTestResult | null>(null)
 
   useEffect(() => {
     let active = true
@@ -71,14 +66,13 @@ export default function UploadPage() {
 
       const { data: companyRow } = await supabase
         .from('companies')
-        .select('id, name, google_sheet_url, google_sheet_last_imported_at')
+        .select('id, name, google_sheet_last_imported_at')
         .eq('id', userRow.company_id)
         .single()
 
       if (!companyRow || !active) return
 
       setCompany(companyRow)
-      setSheetUrl(companyRow.google_sheet_url ?? '')
     }
 
     void loadCompany()
@@ -163,85 +157,70 @@ export default function UploadPage() {
     }
   }
 
-  async function handleSheetTest() {
-    if (!sheetUrl.trim()) return
-
-    setTestingSheet(true)
-    setSheetError(null)
-    setSheetSuccess(null)
+  async function handleSourceTest() {
+    setTestingSource(true)
+    setSourceError(null)
+    setSourceSuccess(null)
+    setSourceTestResult(null)
 
     try {
-      const response = await fetch('/api/upload/google-sheet/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sheetUrl }),
-      })
+      const response = await fetch('/api/upload/mother-brain/test', { method: 'POST' })
 
-      const data = await parseJsonResponse<GoogleSheetTestResult & { error?: string }>(response)
+      const data = await parseJsonResponse<MotherBrainTestResult & { error?: string }>(response)
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to test Google Sheet.')
+        throw new Error(data.error || 'Failed to reach Mother Brain.')
       }
 
-      setSheetTestResult(data)
-      setSheetSuccess(`Connected to ${data.spreadsheetTitle} → ${data.worksheetTitle}.`)
-      setCompany((current) => current ? { ...current, google_sheet_url: sheetUrl.trim() } : current)
+      setSourceTestResult(data)
+      if (data.missingColumns.length === 0) {
+        setSourceSuccess('Connected to Mother Brain.')
+      } else {
+        setSourceError(`This API key is missing ${data.missingColumns.length} required column${data.missingColumns.length === 1 ? '' : 's'}: ${data.missingColumns.join(', ')}`)
+      }
     } catch (error) {
-      setSheetError(error instanceof Error ? error.message : 'Failed to test Google Sheet.')
+      setSourceError(error instanceof Error ? error.message : 'Failed to reach Mother Brain.')
     } finally {
-      setTestingSheet(false)
+      setTestingSource(false)
     }
   }
 
-  async function handleSheetImport() {
-    if (!sheetUrl.trim()) return
-
-    setImportingSheet(true)
-    setSheetError(null)
-    setSheetSuccess(null)
+  async function handleSourceImport() {
+    setImportingSource(true)
+    setSourceError(null)
+    setSourceSuccess(null)
     setResult(null)
     setImportError(null)
 
     try {
-      const response = await fetch('/api/upload/google-sheet/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sheetUrl }),
-      })
+      const response = await fetch('/api/upload/mother-brain/import', { method: 'POST' })
 
       const data = await parseJsonResponse<{
         count?: number
-        spreadsheetTitle?: string
-        worksheetTitle?: string
+        duplicatesDropped?: number
         warningCount?: number
         error?: string
       }>(response)
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to import Google Sheet.')
+        throw new Error(data.error || 'Failed to import from Mother Brain.')
       }
 
       setResult({ count: data.count ?? 0 })
-      setSheetSuccess(
-        `Imported ${data.count ?? 0} job${data.count === 1 ? '' : 's'} from ${data.spreadsheetTitle} → ${data.worksheetTitle}.`
-      )
+      setSourceSuccess(`Imported ${data.count ?? 0} job${data.count === 1 ? '' : 's'} from Mother Brain.`)
       setCompany((current) =>
         current
-          ? {
-              ...current,
-              google_sheet_url: sheetUrl.trim(),
-              google_sheet_last_imported_at: new Date().toISOString(),
-            }
+          ? { ...current, google_sheet_last_imported_at: new Date().toISOString() }
           : current
       )
     } catch (error) {
-      setSheetError(error instanceof Error ? error.message : 'Failed to import Google Sheet.')
+      setSourceError(error instanceof Error ? error.message : 'Failed to import from Mother Brain.')
     } finally {
-      setImportingSheet(false)
+      setImportingSource(false)
     }
   }
 
   const isAlliedCompany = company?.name === ALLIED_COMPANY_NAME
-  const lastSheetImport = company?.google_sheet_last_imported_at
+  const lastSourceImport = company?.google_sheet_last_imported_at
     ? new Date(company.google_sheet_last_imported_at).toLocaleString()
     : null
 
@@ -250,75 +229,57 @@ export default function UploadPage() {
       <div>
         <h1 className="text-2xl font-semibold text-slate-900 mb-2">Upload Job Data</h1>
         <p className="text-sm text-slate-500">
-          Import the latest Albi export as a CSV. Allied Restoration Services can also sync directly from a shared Google Sheet.
+          Import the latest Albi export as a CSV. Allied Restoration Services also syncs directly from Mother Brain.
         </p>
       </div>
 
       {isAlliedCompany && (
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex flex-col gap-1 mb-4">
-            <h2 className="text-lg font-semibold text-slate-900">Google Sheets Import</h2>
+            <h2 className="text-lg font-semibold text-slate-900">Mother Brain Import</h2>
             <p className="text-sm text-slate-500">
-              Paste the shared sheet link here, test that the service account can read it, then import it on demand. After a successful import, it will sync automatically each day around 8:00 PM Pacific.
+              Jobs sync automatically each day around 8:00 PM Pacific. Test the connection or import now to pull the latest jobs on demand.
             </p>
           </div>
 
-          <label htmlFor="sheet-url" className="block text-sm font-medium text-slate-700 mb-2">
-            Google Sheets link
-          </label>
-          <input
-            id="sheet-url"
-            type="url"
-            value={sheetUrl}
-            onChange={(event) => setSheetUrl(event.target.value)}
-            placeholder="https://docs.google.com/spreadsheets/d/..."
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-
-          <div className="mt-4 flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <button
-              onClick={handleSheetTest}
-              disabled={testingSheet || importingSheet || !sheetUrl.trim()}
+              onClick={handleSourceTest}
+              disabled={testingSource || importingSource}
               className="inline-flex items-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {testingSheet ? 'Testing…' : 'Test'}
+              {testingSource ? 'Testing…' : 'Test'}
             </button>
             <button
-              onClick={handleSheetImport}
-              disabled={testingSheet || importingSheet || !sheetUrl.trim()}
+              onClick={handleSourceImport}
+              disabled={testingSource || importingSource}
               className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {importingSheet ? 'Importing…' : 'Import from Google Sheet'}
+              {importingSource ? 'Importing…' : 'Import from Mother Brain'}
             </button>
-            {lastSheetImport && (
-              <p className="text-xs text-slate-500">Last automated/manual sheet import: {lastSheetImport}</p>
+            {lastSourceImport && (
+              <p className="text-xs text-slate-500">Last automated/manual import: {lastSourceImport}</p>
             )}
           </div>
 
-          {sheetSuccess && (
+          {sourceSuccess && (
             <div className="mt-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-              {sheetSuccess}
+              {sourceSuccess}
             </div>
           )}
 
-          {sheetError && (
+          {sourceError && (
             <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-              {sheetError}
+              {sourceError}
             </div>
           )}
 
-          {sheetTestResult && (
+          {sourceTestResult && (
             <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-sm font-medium text-slate-800">
-                {sheetTestResult.spreadsheetTitle} → {sheetTestResult.worksheetTitle}
-              </p>
-              <p className="mt-1 text-xs text-slate-500">
-                {sheetTestResult.totalRows} data row{sheetTestResult.totalRows === 1 ? '' : 's'} detected, {sheetTestResult.headerCount} header{sheetTestResult.headerCount === 1 ? '' : 's'}, {sheetTestResult.warningCount} warning{sheetTestResult.warningCount === 1 ? '' : 's'}.
-              </p>
-              <p className="mt-3 text-xs font-medium uppercase tracking-wide text-slate-500">Headers</p>
-              <p className="mt-1 text-sm text-slate-700">{sheetTestResult.headers.join(', ') || 'No headers found'}</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Columns this key can read</p>
+              <p className="mt-1 text-sm text-slate-700">{sourceTestResult.allowedColumns.join(', ') || 'No columns found'}</p>
 
-              {sheetTestResult.preview.length > 0 && (
+              {sourceTestResult.preview.length > 0 && (
                 <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white">
                   <table className="min-w-full divide-y divide-slate-200 text-sm">
                     <thead className="bg-slate-50">
@@ -331,7 +292,7 @@ export default function UploadPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white">
-                      {sheetTestResult.preview.map((row, index) => (
+                      {sourceTestResult.preview.map((row, index) => (
                         <tr key={`${row.name}-${index}`}>
                           <td className="px-4 py-2 text-slate-800 font-medium">{row.name}</td>
                           <td className="px-4 py-2 text-slate-600">{row.customer}</td>

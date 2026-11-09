@@ -1,11 +1,12 @@
 import { headers } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { readGoogleSheet } from '@/lib/googleSheets'
 import { importParsedJobs, parseImportedRows } from '@/lib/jobs/import'
+import { isMotherBrainConfigured, readMotherBrainJobs } from '@/lib/motherBrain'
 
 const ALLIED_COMPANY_NAME = 'Allied Restoration Services'
 const PACIFIC_TIMEZONE = 'America/Los_Angeles'
+export const maxDuration = 60
 
 export async function POST() {
   const internalSecret = process.env.INTERNAL_CRON_SECRET
@@ -16,10 +17,15 @@ export async function POST() {
   }
 
   try {
+    if (!isMotherBrainConfigured()) {
+      console.warn('[mother-brain-sync] Skipped: Mother Brain env vars are not set.')
+      return NextResponse.json({ ok: true, skipped: true, reason: 'Mother Brain is not configured.' })
+    }
+
     const admin = createAdminClient()
     const { data: company, error } = await admin
       .from('companies')
-      .select('id, name, google_sheet_url, google_sheet_last_imported_at')
+      .select('id, name, google_sheet_last_imported_at')
       .eq('name', ALLIED_COMPANY_NAME)
       .single()
 
@@ -27,25 +33,22 @@ export async function POST() {
       return NextResponse.json({ ok: false, error: 'Allied company record not found.' }, { status: 404 })
     }
 
-    if (!company.google_sheet_url) {
-      return NextResponse.json({ ok: true, skipped: true, reason: 'No Google Sheet URL configured.' })
-    }
-
     if (hasImportedTodayPacific(company.google_sheet_last_imported_at)) {
       return NextResponse.json({ ok: true, skipped: true, reason: 'Already imported today.' })
     }
 
-    const sheet = await readGoogleSheet(company.google_sheet_url)
-    const parsed = parseImportedRows(sheet.rows)
+    const source = await readMotherBrainJobs()
+    const parsed = parseImportedRows(source.rows)
 
     if (parsed.parsed.length === 0) {
-      return NextResponse.json({ ok: true, skipped: true, reason: 'Sheet contained no importable rows.' })
+      return NextResponse.json({ ok: true, skipped: true, reason: 'Mother Brain returned no importable rows.' })
     }
 
     const result = await importParsedJobs(admin, company.id, parsed.parsed, {
       reconcileInbox: false,
     })
 
+    // Column name predates Mother Brain; it records the last job import from any source.
     await admin
       .from('companies')
       .update({ google_sheet_last_imported_at: new Date().toISOString() })
@@ -54,12 +57,12 @@ export async function POST() {
     return NextResponse.json({
       ok: true,
       imported: result.count,
-      spreadsheetTitle: sheet.spreadsheetTitle,
-      worksheetTitle: sheet.worksheetTitle,
+      datasetVersionId: source.datasetVersionId,
+      duplicatesDropped: source.duplicatesDropped,
       warningCount: parsed.rowErrors.length,
     })
   } catch (error) {
-    console.error('[allied-sheet-sync] Failed to run scheduled import:', error)
+    console.error('[mother-brain-sync] Failed to run scheduled import:', error)
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : 'Scheduled import failed.' },
       { status: 500 }

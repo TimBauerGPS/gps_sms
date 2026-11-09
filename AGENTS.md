@@ -274,6 +274,7 @@ CSV upload for Albi job data.
 - Parse with papaparse, normalize headers (lowercase + trim)
 - Upsert into `jobs` on `(company_id, albi_job_id)`
 - Show import summary (new, updated, skipped rows)
+- Allied Restoration Services also imports from Mother Brain, on demand here and nightly around 8pm PT (`lib/motherBrain.ts`). Requires `MOTHER_BRAIN_BASE_URL` and `MOTHER_BRAIN_API_KEY`; the import takes every column the API key allows, and the key's column list is in `docs/mother-brain-columns-needed.md`.
 
 ---
 

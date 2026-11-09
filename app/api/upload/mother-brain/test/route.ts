@@ -1,12 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { readGoogleSheet } from '@/lib/googleSheets'
 import { parseImportedRows } from '@/lib/jobs/import'
+import { testMotherBrainConnection } from '@/lib/motherBrain'
 
 const ALLIED_COMPANY_NAME = 'Allied Restoration Services'
 
-export async function POST(request: NextRequest) {
+export async function POST() {
   try {
     const supabase = await createClient()
     const {
@@ -15,11 +15,6 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const { sheetUrl } = (await request.json()) as { sheetUrl?: string }
-    if (!sheetUrl?.trim()) {
-      return NextResponse.json({ error: 'Enter a Google Sheets link first.' }, { status: 400 })
     }
 
     const admin = createAdminClient()
@@ -44,31 +39,22 @@ export async function POST(request: NextRequest) {
     }
 
     if (company.name !== ALLIED_COMPANY_NAME) {
-      return NextResponse.json({ error: 'Google Sheets import is only enabled for Allied Restoration Services.' }, { status: 403 })
+      return NextResponse.json({ error: 'Mother Brain import is only enabled for Allied Restoration Services.' }, { status: 403 })
     }
 
-    const sheet = await readGoogleSheet(sheetUrl)
-    const parsed = parseImportedRows(sheet.rows)
-
-    await admin
-      .from('companies')
-      .update({ google_sheet_url: sheetUrl.trim() })
-      .eq('id', company.id)
+    const connection = await testMotherBrainConnection()
 
     return NextResponse.json({
       ok: true,
-      spreadsheetTitle: sheet.spreadsheetTitle,
-      worksheetTitle: sheet.worksheetTitle,
-      headerCount: sheet.headers.length,
-      headers: sheet.headers,
-      totalRows: sheet.totalRows,
-      preview: parsed.preview,
-      warningCount: parsed.rowErrors.length,
+      datasetVersionId: connection.datasetVersionId,
+      allowedColumns: connection.allowedColumns,
+      missingColumns: connection.missingColumns,
+      preview: parseImportedRows(connection.rows).preview,
     })
   } catch (error) {
-    console.error('[google-sheet/test] Failed to test sheet:', error)
+    console.error('[mother-brain/test] Failed to test connection:', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to test the Google Sheet.' },
+      { error: error instanceof Error ? error.message : 'Failed to reach Mother Brain.' },
       { status: 500 }
     )
   }

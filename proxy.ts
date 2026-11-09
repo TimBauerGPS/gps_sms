@@ -14,7 +14,7 @@ export async function proxy(request: NextRequest) {
     pathname === '/manifest.json' ||
     pathname === '/api/no-access' ||
     pathname === '/no-access' ||
-    pathname === '/api/internal/allied-sheet-sync'
+    pathname === '/api/internal/mother-brain-sync'
 
   if (isPublic) {
     return NextResponse.next({ request })

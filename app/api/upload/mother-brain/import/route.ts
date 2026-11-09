@@ -1,13 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { readGoogleSheet } from '@/lib/googleSheets'
 import { importParsedJobs, parseImportedRows } from '@/lib/jobs/import'
+import { readMotherBrainJobs } from '@/lib/motherBrain'
 
 const ALLIED_COMPANY_NAME = 'Allied Restoration Services'
 export const maxDuration = 60
 
-export async function POST(request: NextRequest) {
+export async function POST() {
   const startedAt = Date.now()
   try {
     const supabase = await createClient()
@@ -17,11 +17,6 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const { sheetUrl } = (await request.json()) as { sheetUrl?: string }
-    if (!sheetUrl?.trim()) {
-      return NextResponse.json({ error: 'Enter a Google Sheets link first.' }, { status: 400 })
     }
 
     const admin = createAdminClient()
@@ -45,17 +40,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Company not found.' }, { status: 403 })
     }
 
+    // Mother Brain holds Allied's Albi jobs only, so no other company may import them.
     if (company.name !== ALLIED_COMPANY_NAME) {
-      return NextResponse.json({ error: 'Google Sheets import is only enabled for Allied Restoration Services.' }, { status: 403 })
+      return NextResponse.json({ error: 'Mother Brain import is only enabled for Allied Restoration Services.' }, { status: 403 })
     }
 
-    const sheet = await readGoogleSheet(sheetUrl)
+    const source = await readMotherBrainJobs()
     const afterReadAt = Date.now()
-    const parsed = parseImportedRows(sheet.rows)
+    const parsed = parseImportedRows(source.rows)
     const afterParseAt = Date.now()
 
     if (parsed.parsed.length === 0) {
-      return NextResponse.json({ error: 'The selected sheet did not contain any importable rows.' }, { status: 400 })
+      return NextResponse.json({ error: 'Mother Brain did not return any importable rows.' }, { status: 400 })
     }
 
     const result = await importParsedJobs(admin, company.id, parsed.parsed, {
@@ -64,20 +60,19 @@ export async function POST(request: NextRequest) {
     })
     const afterImportAt = Date.now()
 
+    // Column name predates Mother Brain; it records the last job import from any source.
     await admin
       .from('companies')
-      .update({
-        google_sheet_url: sheetUrl.trim(),
-        google_sheet_last_imported_at: new Date().toISOString(),
-      })
+      .update({ google_sheet_last_imported_at: new Date().toISOString() })
       .eq('id', company.id)
 
-    console.log('[google-sheet/import] Completed import', {
+    console.log('[mother-brain/import] Completed import', {
       companyId: company.id,
-      totalRows: sheet.totalRows,
+      datasetVersionId: source.datasetVersionId,
       parsedRows: parsed.parsed.length,
+      duplicatesDropped: source.duplicatesDropped,
       warningCount: parsed.rowErrors.length,
-      msReadSheet: afterReadAt - startedAt,
+      msReadMotherBrain: afterReadAt - startedAt,
       msParseRows: afterParseAt - afterReadAt,
       msImportJobs: afterImportAt - afterParseAt,
       msTotal: Date.now() - startedAt,
@@ -86,18 +81,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       count: result.count,
-      totalRows: sheet.totalRows,
-      spreadsheetTitle: sheet.spreadsheetTitle,
-      worksheetTitle: sheet.worksheetTitle,
+      duplicatesDropped: source.duplicatesDropped,
       warningCount: parsed.rowErrors.length,
     })
   } catch (error) {
-    console.error('[google-sheet/import] Failed to import sheet:', {
+    console.error('[mother-brain/import] Failed to import jobs:', {
       error,
       msTotal: Date.now() - startedAt,
     })
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to import the Google Sheet.' },
+      { error: error instanceof Error ? error.message : 'Failed to import from Mother Brain.' },
       { status: 500 }
     )
   }
