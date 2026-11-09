@@ -11,6 +11,8 @@ import {
 } from '@/lib/jobs/import'
 
 const ALLIED_COMPANY_NAME = 'Allied Restoration Services'
+const IMPORT_POLL_MS = 5_000
+const IMPORT_WAIT_MS = 15 * 60_000
 
 interface CompanyImportSettings {
   id: string
@@ -29,6 +31,7 @@ export default function UploadPage() {
   const supabaseRef = useRef(createClient())
   const supabase = supabaseRef.current
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const mountedRef = useRef(true)
 
   const [isDragging, setIsDragging] = useState(false)
   const [fileName, setFileName] = useState<string | null>(null)
@@ -45,6 +48,13 @@ export default function UploadPage() {
   const [sourceError, setSourceError] = useState<string | null>(null)
   const [sourceSuccess, setSourceSuccess] = useState<string | null>(null)
   const [sourceTestResult, setSourceTestResult] = useState<MotherBrainTestResult | null>(null)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -184,38 +194,57 @@ export default function UploadPage() {
     }
   }
 
+  // The import runs in a Netlify background function, so the page can't get a
+  // result back. It waits for the company's last-import time to change instead.
   async function handleSourceImport() {
+    if (!company) return
+
     setImportingSource(true)
     setSourceError(null)
     setSourceSuccess(null)
     setResult(null)
     setImportError(null)
 
+    const previousImportAt = company.google_sheet_last_imported_at
+
     try {
       const response = await fetch('/api/upload/mother-brain/import', { method: 'POST' })
-
-      const data = await parseJsonResponse<{
-        count?: number
-        duplicatesDropped?: number
-        warningCount?: number
-        error?: string
-      }>(response)
+      const data = await parseJsonResponse<{ error?: string }>(response)
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to import from Mother Brain.')
+        throw new Error(data.error || 'Failed to start the Mother Brain import.')
       }
 
-      setResult({ count: data.count ?? 0 })
-      setSourceSuccess(`Imported ${data.count ?? 0} job${data.count === 1 ? '' : 's'} from Mother Brain.`)
-      setCompany((current) =>
-        current
-          ? { ...current, google_sheet_last_imported_at: new Date().toISOString() }
-          : current
-      )
+      const deadline = Date.now() + IMPORT_WAIT_MS
+      while (mountedRef.current && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, IMPORT_POLL_MS))
+
+        const { data: companyRow } = await supabase
+          .from('companies')
+          .select('google_sheet_last_imported_at')
+          .eq('id', company.id)
+          .single()
+
+        const importedAt = companyRow?.google_sheet_last_imported_at ?? null
+        if (importedAt && importedAt !== previousImportAt) {
+          if (!mountedRef.current) return
+          setSourceSuccess('Import from Mother Brain finished.')
+          setCompany((current) => current ? { ...current, google_sheet_last_imported_at: importedAt } : current)
+          return
+        }
+      }
+
+      if (mountedRef.current) {
+        throw new Error(
+          'The import has not finished after 15 minutes. Check the Netlify logs for the mother-brain-import-background function.'
+        )
+      }
     } catch (error) {
-      setSourceError(error instanceof Error ? error.message : 'Failed to import from Mother Brain.')
+      if (mountedRef.current) {
+        setSourceError(error instanceof Error ? error.message : 'Failed to import from Mother Brain.')
+      }
     } finally {
-      setImportingSource(false)
+      if (mountedRef.current) setImportingSource(false)
     }
   }
 
@@ -252,7 +281,7 @@ export default function UploadPage() {
             </button>
             <button
               onClick={handleSourceImport}
-              disabled={testingSource || importingSource}
+              disabled={testingSource || importingSource || !company}
               className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {importingSource ? 'Importing…' : 'Import from Mother Brain'}
@@ -261,6 +290,12 @@ export default function UploadPage() {
               <p className="text-xs text-slate-500">Last automated/manual import: {lastSourceImport}</p>
             )}
           </div>
+
+          {importingSource && (
+            <p className="mt-4 text-sm text-slate-500">
+              Importing in the background. This usually takes a few minutes, and it keeps running if you leave this page.
+            </p>
+          )}
 
           {sourceSuccess && (
             <div className="mt-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">

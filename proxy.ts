@@ -13,8 +13,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/api/check-twilio') ||
     pathname === '/manifest.json' ||
     pathname === '/api/no-access' ||
-    pathname === '/no-access' ||
-    pathname === '/api/internal/mother-brain-sync'
+    pathname === '/no-access'
 
   if (isPublic) {
     return NextResponse.next({ request })

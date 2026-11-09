@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { reconcileInboxForPhones } from '@/lib/inbox/reconcile'
+// Relative so the Netlify background function bundles without the @/ alias.
+import { reconcileInboxForPhones } from '../inbox/reconcile'
 import type { Database, Json } from '@/lib/supabase/types'
 
 type JobInsert = Database['public']['Tables']['jobs']['Insert']

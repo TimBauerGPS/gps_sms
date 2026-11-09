@@ -1,14 +1,13 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { importParsedJobs, parseImportedRows } from '@/lib/jobs/import'
-import { readMotherBrainJobs } from '@/lib/motherBrain'
 
 const ALLIED_COMPANY_NAME = 'Allied Restoration Services'
-export const maxDuration = 60
 
-export async function POST() {
-  const startedAt = Date.now()
+// Starts the import in netlify/functions/mother-brain-import-background.ts and
+// returns at once: a full import takes longer than a route is allowed to run.
+// The upload page waits for companies.google_sheet_last_imported_at to change.
+export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
     const {
@@ -45,52 +44,27 @@ export async function POST() {
       return NextResponse.json({ error: 'Mother Brain import is only enabled for Allied Restoration Services.' }, { status: 403 })
     }
 
-    const source = await readMotherBrainJobs()
-    const afterReadAt = Date.now()
-    const parsed = parseImportedRows(source.rows)
-    const afterParseAt = Date.now()
-
-    if (parsed.parsed.length === 0) {
-      return NextResponse.json({ error: 'Mother Brain did not return any importable rows.' }, { status: 400 })
+    const secret = process.env.INTERNAL_CRON_SECRET
+    if (!secret) {
+      return NextResponse.json({ error: 'Missing INTERNAL_CRON_SECRET.' }, { status: 500 })
     }
 
-    const result = await importParsedJobs(admin, company.id, parsed.parsed, {
-      batchSize: 500,
-      reconcileInbox: false,
-    })
-    const afterImportAt = Date.now()
-
-    // Column name predates Mother Brain; it records the last job import from any source.
-    await admin
-      .from('companies')
-      .update({ google_sheet_last_imported_at: new Date().toISOString() })
-      .eq('id', company.id)
-
-    console.log('[mother-brain/import] Completed import', {
-      companyId: company.id,
-      datasetVersionId: source.datasetVersionId,
-      parsedRows: parsed.parsed.length,
-      duplicatesDropped: source.duplicatesDropped,
-      warningCount: parsed.rowErrors.length,
-      msReadMotherBrain: afterReadAt - startedAt,
-      msParseRows: afterParseAt - afterReadAt,
-      msImportJobs: afterImportAt - afterParseAt,
-      msTotal: Date.now() - startedAt,
+    const response = await fetch(new URL('/.netlify/functions/mother-brain-import-background', request.nextUrl.origin), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-cron-secret': secret },
+      body: JSON.stringify({ force: true }),
+      cache: 'no-store',
     })
 
-    return NextResponse.json({
-      ok: true,
-      count: result.count,
-      duplicatesDropped: source.duplicatesDropped,
-      warningCount: parsed.rowErrors.length,
-    })
+    if (!response.ok) {
+      return NextResponse.json({ error: `Could not start the import (HTTP ${response.status}).` }, { status: 502 })
+    }
+
+    return NextResponse.json({ ok: true, started: true }, { status: 202 })
   } catch (error) {
-    console.error('[mother-brain/import] Failed to import jobs:', {
-      error,
-      msTotal: Date.now() - startedAt,
-    })
+    console.error('[mother-brain/import] Failed to start import:', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to import from Mother Brain.' },
+      { error: error instanceof Error ? error.message : 'Failed to start the Mother Brain import.' },
       { status: 500 }
     )
   }

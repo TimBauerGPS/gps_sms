@@ -31,11 +31,15 @@ export const handler = async () => {
     }
   }
 
-  const response = await fetch(`${appUrl}/api/internal/mother-brain-sync`, {
+  // Background function: Netlify answers 202 at once and the import runs for up to
+  // 15 minutes. It skips itself if a job import already ran today.
+  const response = await fetch(`${appUrl}/.netlify/functions/mother-brain-import-background`, {
     method: 'POST',
     headers: {
+      'Content-Type': 'application/json',
       'x-internal-cron-secret': secret,
     },
+    body: JSON.stringify({}),
   })
 
   const text = await response.text()
