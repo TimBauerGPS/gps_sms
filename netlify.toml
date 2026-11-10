@@ -8,9 +8,6 @@
 [functions]
   directory = "netlify/functions"
 
-[functions."mother-brain-sync"]
-  schedule = "0 * * * *"
-
 [[headers]]
   for = "/api/twilio-inbound"
   [headers.values]

@@ -51,6 +51,4 @@ export const handler = async () => {
   }
 }
 
-export const config = {
-  schedule: '0 * * * *',
-}
+// Schedule removed 2026-11: texting moved to arOS (SMS dashboard). Do not re-enable.
